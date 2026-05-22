@@ -1,0 +1,61 @@
+name: PowerShell syntax check
+
+on:
+  push:
+    paths:
+      - "**.ps1"
+      - ".github/workflows/powershell-check.yml"
+  pull_request:
+    paths:
+      - "**.ps1"
+      - ".github/workflows/powershell-check.yml"
+  workflow_dispatch:
+
+jobs:
+  syntax-check:
+    name: Check PowerShell syntax
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $files = Get-ChildItem -Path . -Recurse -Filter "*.ps1"
+
+          if (-not $files) {
+              throw "No PowerShell files found."
+          }
+
+          $hasErrors = $false
+
+          foreach ($file in $files) {
+              Write-Host "Checking syntax: $($file.FullName)"
+
+              $tokens = $null
+              $errors = $null
+
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                  $file.FullName,
+                  [ref]$tokens,
+                  [ref]$errors
+              ) | Out-Null
+
+              if ($errors.Count -gt 0) {
+                  $hasErrors = $true
+
+                  foreach ($errorItem in $errors) {
+                      Write-Error "$($file.FullName): line $($errorItem.Extent.StartLineNumber), column $($errorItem.Extent.StartColumnNumber): $($errorItem.Message)"
+                  }
+              }
+          }
+
+          if ($hasErrors) {
+              exit 1
+          }
+
+          Write-Host "All PowerShell files parsed successfully."

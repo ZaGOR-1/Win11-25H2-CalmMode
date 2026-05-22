@@ -2,7 +2,7 @@
 #requires -PSEdition Desktop
 
 <#
-Win11-25H2-CalmMode-v2.ps1
+Win11-25H2-CalmMode-v2.1.ps1
 
 Modes:
   Audit  - reads current settings and shows what would change. Does NOT modify Windows.
@@ -127,11 +127,11 @@ $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $desktopPath = [Environment]::GetFolderPath("Desktop")
 if ([string]::IsNullOrWhiteSpace($desktopPath)) { $desktopPath = $env:TEMP }
 
-$script:ReportDir = Join-Path $desktopPath "Win11-25H2-CalmMode-v2-$Mode-$timestamp"
+$script:ReportDir = Join-Path $desktopPath "Win11-25H2-CalmMode-v2.1-$Mode-$timestamp"
 New-Item -ItemType Directory -Path $script:ReportDir -Force | Out-Null
 
 try {
-    Start-Transcript -Path (Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.log") -Force | Out-Null
+    Start-Transcript -Path (Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.1.log") -Force | Out-Null
 } catch {
     Write-Host "WARNING: Could not start transcript: $($_.Exception.Message)" -ForegroundColor Yellow
 }
@@ -242,6 +242,35 @@ function Test-ValueEquals {
     return ([string]$A -eq [string]$B)
 }
 
+function Test-WidgetsDisabledByPolicy {
+    <#
+    Windows 11 25H2 can omit the per-user TaskbarDa UI value when Widgets are already disabled
+    by the device policy. In that case, missing TaskbarDa is not a real failure.
+    Official policy-backed control:
+      HKLM:\\SOFTWARE\\Policies\\Microsoft\\Dsh\\AllowNewsAndInterests = 0
+    #>
+
+    $policy = Get-RegValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests"
+    if (-not $policy.Exists) { return $false }
+
+    try { return ([int]$policy.Value -eq 0) } catch { return $false }
+}
+
+function Test-TaskbarDaSatisfiedByPolicy {
+    param([pscustomobject]$Setting)
+
+    if ($Setting.Name -ne "TaskbarDa") { return $false }
+    if ($Setting.Type -ne "DWord") { return $false }
+
+    try {
+        if ([int]$Setting.Value -ne 0) { return $false }
+    } catch {
+        return $false
+    }
+
+    return (Test-WidgetsDisabledByPolicy)
+}
+
 function Get-Applicability {
     param([pscustomobject]$Setting)
 
@@ -325,6 +354,15 @@ function Invoke-RegSetting {
         $equals = Test-ValueEquals -A $current -B $desired -Type $Setting.Type
     }
 
+    $satisfiedByPolicy = $false
+    if (-not $equals -and (Test-TaskbarDaSatisfiedByPolicy -Setting $Setting)) {
+        $satisfiedByPolicy = $true
+        $equals = $true
+        if (-not $read.Exists) {
+            $current = "Missing; satisfied by Widgets policy AllowNewsAndInterests=0"
+        }
+    }
+
     $supportText = $applicability.Status
     if (-not [string]::IsNullOrWhiteSpace($applicability.Message)) {
         $supportText = "$supportText; $($applicability.Message)"
@@ -333,6 +371,10 @@ function Invoke-RegSetting {
     if ($Mode -eq "Audit") {
         $status = if ($equals) { "Compliant" } else { "WouldChange" }
         $msg = if ($equals) { "Already matches desired value." } else { "No changes made in Audit mode." }
+
+        if ($satisfiedByPolicy) {
+            $msg = "Per-user TaskbarDa value is not required because Widgets are disabled by policy AllowNewsAndInterests=0."
+        }
 
         if ($applicability.Status -eq "UnsupportedBuild") {
             $status = "UnsupportedBuild"
@@ -347,6 +389,10 @@ function Invoke-RegSetting {
     if ($Mode -eq "Verify") {
         $status = if ($equals) { "VerifyOK" } else { "VerifyFail" }
         $msg = if ($equals) { "Desired registry value is present." } else { "Desired registry value is missing or different." }
+
+        if ($satisfiedByPolicy) {
+            $msg = "Per-user TaskbarDa value is not required because Widgets are disabled by policy AllowNewsAndInterests=0."
+        }
 
         if ($applicability.Status -eq "UnsupportedBuild") {
             $status = "UnsupportedBuild"
@@ -366,8 +412,15 @@ function Invoke-RegSetting {
         }
 
         if ($equals) {
-            Add-Result $Setting.Category $Setting.Description "AlreadyConfigured" $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText "Already configured. No write performed."
-            Print-ResultLine "AlreadyConfigured" $Setting.Category $Setting.Description $current $desired "No write needed."
+            $alreadyMessage = "Already configured. No write performed."
+            $printMessage = "No write needed."
+            if ($satisfiedByPolicy) {
+                $alreadyMessage = "No write performed: per-user TaskbarDa value is not required because Widgets are disabled by policy AllowNewsAndInterests=0."
+                $printMessage = "Satisfied by Widgets policy."
+            }
+
+            Add-Result $Setting.Category $Setting.Description "AlreadyConfigured" $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText $alreadyMessage
+            Print-ResultLine "AlreadyConfigured" $Setting.Category $Setting.Description $current $desired $printMessage
             return
         }
 
@@ -461,7 +514,7 @@ function Invoke-RestorePoint {
     Write-Section "Restore point"
 
     try {
-        Checkpoint-Computer -Description "Before Win11 25H2 Calm Mode v2" -RestorePointType "MODIFY_SETTINGS"
+        Checkpoint-Computer -Description "Before Win11 25H2 Calm Mode v2.1" -RestorePointType "MODIFY_SETTINGS"
         Add-Result "Preflight" "Restore point" "Changed" "" "" "" "" "Official" "Supported" "Restore point created."
         Write-Host "Restore point created." -ForegroundColor Green
     } catch {
@@ -626,12 +679,15 @@ function Invoke-AppCleanup {
 function Add-PreflightResults {
     Write-Section "Preflight"
 
-    $isWindows11 = ($script:ProductName -like "*Windows 11*")
+    # Windows 11 is best detected by build number. On many Windows 11 builds, the legacy
+    # ProductName registry value can still say "Windows 10 Pro".
+    $isWindows11 = ($script:BuildNumber -ge 22000)
     $versionMessage = "ProductName=$script:ProductName; DisplayVersion=$script:DisplayVersion; Build=$script:BuildNumber; UBR=$script:UBR; EditionId=$script:EditionId; EditionGroup=$script:EditionGroup"
 
     $status = if ($isWindows11) { "Compliant" } else { "Warning" }
-    Add-Result "Preflight" "Windows version" $status $versionMessage "Windows 11 $TargetReleaseVersionInfo" "" "" "Official" "Detected" $versionMessage
-    Print-ResultLine $status "Preflight" "Windows version" $versionMessage "Windows 11 $TargetReleaseVersionInfo" ""
+    $versionCheckMessage = if ($isWindows11) { "Windows 11 detected by build number >= 22000. ProductName can be a legacy value." } else { "Build number is below 22000; this does not look like Windows 11." }
+    Add-Result "Preflight" "Windows version" $status $versionMessage "Windows 11 $TargetReleaseVersionInfo" "" "" "Official" "Detected" $versionCheckMessage
+    Print-ResultLine $status "Preflight" "Windows version" $versionMessage "Windows 11 $TargetReleaseVersionInfo" $versionCheckMessage
 
     $targetStatus = if ($script:DisplayVersion -eq $TargetReleaseVersionInfo) { "Compliant" } else { "Warning" }
     Add-Result "Preflight" "Target release match" $targetStatus $script:DisplayVersion $TargetReleaseVersionInfo "" "" "Official" "Detected" "If this is not 25H2, adjust -TargetReleaseVersionInfo or do not use TargetReleaseVersion pinning."
@@ -770,7 +826,8 @@ function Build-RegistrySettings {
 
         Add-RegSetting "Taskbar" $ExplorerAdvanced_HKCU "SearchboxTaskbarMode" "DWord" $searchModeValue "Set taskbar search mode to $SearchMode" 22000 @() "UISetting" ""
         Add-RegSetting "Taskbar" $ExplorerAdvanced_HKCU "ShowTaskViewButton" "DWord" 0 "Hide Task View button" 22000 @() "UISetting" ""
-        Add-RegSetting "Taskbar" $ExplorerAdvanced_HKCU "TaskbarDa" "DWord" 0 "Hide Widgets button" 22000 @() "UISetting" ""
+        # TaskbarDa is already covered in the Widgets block. Do not register it twice,
+        # because Windows 11 25H2 may omit this UI value when Widgets are disabled by policy.
         Add-RegSetting "Taskbar" $ExplorerAdvanced_HKCU "TaskbarMn" "DWord" 0 "Hide Chat/Teams consumer button if present" 22000 @() "UISetting" ""
         Add-RegSetting "Start" $ExplorerAdvanced_HKCU "Start_TrackDocs" "DWord" 0 "Do not track recent documents in Start/Jump Lists" 22000 @() "UISetting" ""
         Add-RegSetting "Start" $ExplorerAdvanced_HKCU "Start_TrackProgs" "DWord" 0 "Do not track frequently used programs" 22000 @() "UISetting" ""
@@ -900,9 +957,9 @@ function Invoke-GpUpdateAndExplorer {
 function Write-Reports {
     Write-Section "Writing reports"
 
-    $csvPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2-results.csv"
-    $htmlPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2-report.html"
-    $jsonPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2-results.json"
+    $csvPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.1-results.csv"
+    $htmlPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.1-report.html"
+    $jsonPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.1-results.json"
 
     try {
         $script:Results | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
@@ -938,11 +995,11 @@ tr:nth-child(even) { background: #fafafa; }
 <html>
 <head>
 <meta charset="utf-8">
-<title>Win11 25H2 Calm Mode v2 Report</title>
+<title>Win11 25H2 Calm Mode v2.1 Report</title>
 $css
 </head>
 <body>
-<h1>Win11 25H2 Calm Mode v2 Report</h1>
+<h1>Win11 25H2 Calm Mode v2.1 Report</h1>
 <div class="meta">
 Mode: <b>$Mode</b><br>
 Generated: <b>$(Get-Date)</b><br>
@@ -976,7 +1033,7 @@ $resultsHtml
 # MAIN
 # ============================================================
 
-Write-Section "Win11 25H2 Calm Mode v2 - $Mode"
+Write-Section "Win11 25H2 Calm Mode v2.1 - $Mode"
 
 Write-Host "Mode: $Mode" -ForegroundColor Cyan
 Write-Host "Report folder: $script:ReportDir" -ForegroundColor Yellow
@@ -1001,14 +1058,14 @@ Write-Host $script:ReportDir -ForegroundColor Yellow
 if ($Mode -eq "Audit") {
     Write-Host ""
     Write-Host "No changes were made. To apply:" -ForegroundColor Cyan
-    Write-Host ".\Win11-25H2-CalmMode-v2.ps1 -Mode Apply" -ForegroundColor Yellow
+    Write-Host ".\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply" -ForegroundColor Yellow
 }
 
 if ($Mode -eq "Apply") {
     Write-Host ""
     Write-Host "Recommended: restart your laptop after Apply mode." -ForegroundColor Cyan
     Write-Host "Then run:" -ForegroundColor Cyan
-    Write-Host ".\Win11-25H2-CalmMode-v2.ps1 -Mode Verify" -ForegroundColor Yellow
+    Write-Host ".\Win11-25H2-CalmMode-v2.1.ps1 -Mode Verify" -ForegroundColor Yellow
 }
 
 try { Stop-Transcript | Out-Null } catch {}
