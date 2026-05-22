@@ -1,4 +1,4 @@
-# Win11 25H2 Calm Mode v2
+# Win11 25H2 Calm Mode v2.1
 
 PowerShell-скрипт для акуратного налаштування Windows 11 25H2 у більш “спокійний” режим: менше Copilot/AI-функцій, Widgets, реклами, нав’язливих рекомендацій, фонових процесів Edge, автоматичних драйверів через Windows Update і зайвих UI-підказок.
 
@@ -48,7 +48,7 @@ $PSVersionTable.PSVersion
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 cd "$env:USERPROFILE\Desktop"
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Audit
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit
 ```
 
 `Audit` нічого не змінює. Він тільки читає поточні значення і створює звіт.
@@ -56,7 +56,7 @@ cd "$env:USERPROFILE\Desktop"
 ### 2. Apply: застосувати налаштування
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Apply
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply
 ```
 
 Після завершення бажано перезавантажити комп’ютер.
@@ -64,7 +64,7 @@ cd "$env:USERPROFILE\Desktop"
 ### 3. Verify: перевірити після перезавантаження
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Verify
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Verify
 ```
 
 ---
@@ -80,13 +80,13 @@ cd "$env:USERPROFILE\Desktop"
 За замовчуванням використовується `Audit`, тому випадковий запуск без параметрів не змінює систему.
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.ps1
+.\Win11-25H2-CalmMode-v2.1.ps1
 ```
 
 це те саме, що:
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Audit
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit
 ```
 
 ---
@@ -110,15 +110,15 @@ cd "$env:USERPROFILE\Desktop"
 Приклади:
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Audit -SearchMode Hidden
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit -SearchMode Hidden
 ```
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Apply -FeatureUpdateDeferralDays 120 -QualityUpdateDeferralDays 7
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply -FeatureUpdateDeferralDays 120 -QualityUpdateDeferralDays 7
 ```
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Apply -NoAppCleanup
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply -NoAppCleanup
 ```
 
 ---
@@ -128,16 +128,16 @@ cd "$env:USERPROFILE\Desktop"
 Після кожного запуску створюється папка на робочому столі:
 
 ```text
-Win11-25H2-CalmMode-v2-<Mode>-YYYY-MM-DD_HH-MM-SS
+Win11-25H2-CalmMode-v2.1-<Mode>-YYYY-MM-DD_HH-MM-SS
 ```
 
 У ній будуть:
 
 ```text
-Win11-25H2-CalmMode-v2-report.html
-Win11-25H2-CalmMode-v2-results.csv
-Win11-25H2-CalmMode-v2-results.json
-Win11-25H2-CalmMode-v2.log
+Win11-25H2-CalmMode-v2.1-report.html
+Win11-25H2-CalmMode-v2.1-results.csv
+Win11-25H2-CalmMode-v2.1-results.json
+Win11-25H2-CalmMode-v2.1.log
 ```
 
 У `Apply`-режимі також зберігаються `.reg` backup-файли для важливих гілок реєстру.
@@ -415,7 +415,7 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 Щоб пропустити Appx cleanup:
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Apply -NoAppCleanup
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply -NoAppCleanup
 ```
 
 ---
@@ -510,16 +510,16 @@ gpresult /h "$env:USERPROFILE\Desktop\gpresult.html"
 
 ```powershell
 # 1. Подивитися, що буде змінено
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Audit
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit
 
 # 2. Застосувати
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Apply
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply
 
 # 3. Перезавантажити ПК
 Restart-Computer
 
 # 4. Перевірити
-.\Win11-25H2-CalmMode-v2.ps1 -Mode Verify
+.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Verify
 ```
 
 ---
@@ -542,3 +542,17 @@ Restart-Computer
 ## Disclaimer
 
 Це неофіційний community/scripted конфігуратор. Використовуй на власний ризик. Перед запуском на основній системі бажано протестувати у VM, зробити backup важливих даних і запустити `-Mode Audit`.
+
+---
+
+## GitHub Actions / CI
+
+The repository can use GitHub Actions to check PowerShell syntax on every push and pull request.
+
+The workflow file must be located here:
+
+```text
+.github/workflows/powershell-check.yml
+```
+
+The workflow does not apply Windows settings and does not modify the runner configuration. It only parses `.ps1` files and fails if PowerShell syntax errors are found.
