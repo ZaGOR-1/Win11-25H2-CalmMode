@@ -27,6 +27,7 @@ This project uses a simple versioning style: `vMAJOR.MINOR`.
 - The project version is now stored in a dedicated `VERSION` file, which is dynamically read by the script and CI/CD pipelines during release packaging. This makes future updates cleaner and eliminates the need to rename the file.
 - Improved Windows AI and Paint AI policy accuracy by adding strict `MinUBR` checks.
 - Enhanced release hygiene: the ZIP hash (`.sha256`) is now generated externally alongside the archive instead of being embedded. Release build scripts now strictly exclude audit reports.
+- Release tooling hardening: `New-ReleaseArchive.ps1` computes SHA256 via .NET (no `Get-FileHash` dependency), writes `checksums.txt` and `.sha256` as LF + UTF-8 without BOM, and excludes `.gitignore` from the archive. The CI release workflow now calls this same script as the single source of truth, and CI pins Pester `4.10.1` to match the test syntax.
 
 ### Docs
 

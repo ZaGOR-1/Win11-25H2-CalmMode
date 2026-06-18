@@ -205,14 +205,14 @@ README має бути чесним:
 ```powershell
 $tokens = $null
 $errors = $null
-[System.Management.Automation.Language.Parser]::ParseFile(".\Win11-25H2-CalmMode-v2.1.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+[System.Management.Automation.Language.Parser]::ParseFile(".\Win11-25H2-CalmMode.ps1", [ref]$tokens, [ref]$errors) | Out-Null
 $errors
 ```
 
 Також бажано:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Win11-25H2-CalmMode.ps1 -Mode Audit
 ```
 
 Для серйозних змін:
