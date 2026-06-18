@@ -1,0 +1,19 @@
+# Claude local files
+.claude/settings.local.json
+
+# Generated reports/backups (created on the Desktop by default, but ignore here too)
+Win11-25H2-CalmMode-v*-Audit-*/
+Win11-25H2-CalmMode-v*-Apply-*/
+Win11-25H2-CalmMode-v*-Verify-*/
+*.log
+*.reg
+
+# Release artifacts
+Win11-25H2-CalmMode-Release/
+Win11-25H2-CalmMode-v*.zip
+Win11-25H2-CalmMode-Release.zip
+*.sha256
+checksums.txt
+
+# Audit reports
+*-report.md

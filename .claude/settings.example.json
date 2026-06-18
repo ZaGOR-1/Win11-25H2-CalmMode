@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(powershell.exe -NoProfile -Command \"*)",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Win11-25H2-CalmMode-v*.ps1 -Mode Audit*)"
+    ],
+    "deny": [
+      "Bash(powershell.exe * -Mode Apply*)",
+      "Bash(powershell.exe * Remove-Appx*)",
+      "Bash(powershell.exe * Set-ExecutionPolicy*)",
+      "Bash(curl * | *)",
+      "Bash(iwr * | *)",
+      "Bash(Invoke-Expression*)"
+    ]
+  }
+}

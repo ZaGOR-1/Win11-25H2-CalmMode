@@ -1,0 +1,50 @@
+name: Create Release Archive
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create archive
+        run: |
+          mkdir release-build
+          # Copy essential files
+          cp Win11-25H2-CalmMode.ps1 release-build/
+          cp Win11-25H2-CalmMode.Tests.ps1 release-build/
+          cp VERSION release-build/
+          cp README.md release-build/
+          cp CHANGELOG_EN.md release-build/
+          cp CHANGELOG_UA.md release-build/
+          cp LICENSE release-build/
+          rm -rf release-build/.git
+          rm -rf release-build/.claude
+          rm -f release-build/*.log
+          
+          # Generate SHA256 hashes
+          cd release-build
+          sha256sum * > ../checksums.txt
+          cd ..
+          
+          # Create zip
+          cd release-build
+          zip -r ../Win11-25H2-CalmMode-Release.zip ./*
+          cd ..
+          
+          # Hash zip
+          sha256sum Win11-25H2-CalmMode-Release.zip > Win11-25H2-CalmMode-Release.zip.sha256
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            Win11-25H2-CalmMode-Release.zip
+            Win11-25H2-CalmMode-Release.zip.sha256
+            checksums.txt

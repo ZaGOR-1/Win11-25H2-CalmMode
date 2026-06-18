@@ -1,4 +1,4 @@
-name: PowerShell syntax check
+name: PowerShell quality gates
 
 on:
   push:
@@ -59,3 +59,57 @@ jobs:
           }
 
           Write-Host "All PowerShell files parsed successfully."
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -ErrorAction Stop
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings .\PSScriptAnalyzerSettings.psd1 -Severity Error,Warning
+          if ($results) {
+              $results | Format-Table -Wrap
+              exit 1
+          }
+          Write-Host "PSScriptAnalyzer passed successfully."
+
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          Install-Module Pester -Force -SkipPublisherCheck -ErrorAction Stop
+          $result = Invoke-Pester -Path .\Win11-25H2-CalmMode.Tests.ps1 -PassThru
+          if ($result.FailedCount -gt 0) {
+              exit 1
+          }
+          Write-Host "Pester tests passed successfully."
+
+      - name: Check for forbidden patterns
+        shell: pwsh
+        run: |
+          $forbidden = @('Invoke-Expression', 'DownloadString', 'FromBase64', '-enc ', 'Net.WebClient')
+          # Exclude the test file because it uses Invoke-Expression to dot-source functions
+          $files = Get-ChildItem -Path . -Filter "Win11-*.ps1" | Where-Object { $_.Name -notmatch "Tests" }
+          $hasErrors = $false
+          foreach ($file in $files) {
+              $content = Get-Content $file.FullName -Raw
+              foreach ($pattern in $forbidden) {
+                  if ($content -match $pattern) {
+                      Write-Error "Forbidden pattern found in $($file.Name): $pattern"
+                      $hasErrors = $true
+                  }
+              }
+          }
+          if ($hasErrors) { exit 1 }
+          Write-Host "No forbidden patterns found."
+
+      - name: Dry-run Audit mode
+        shell: powershell
+        run: |
+          $script = Get-ChildItem -Path . -Filter "Win11-25H2-CalmMode.ps1" | Select-Object -First 1
+          if (-not $script) { throw "Main script not found" }
+          Write-Host "Running $($script.Name) in Audit mode..."
+          & $script.FullName -Mode Audit
+          Write-Host "Dry-run Audit completed successfully."

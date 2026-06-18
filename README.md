@@ -1,4 +1,4 @@
-# Win11 25H2 Calm Mode v2.1
+# Win11 25H2 Calm Mode v2.2
 
 PowerShell-скрипт для акуратного налаштування Windows 11 25H2 у більш “спокійний” режим: менше Copilot/AI-функцій, Widgets, реклами, нав’язливих рекомендацій, фонових процесів Edge, автоматичних драйверів через Windows Update і зайвих UI-підказок.
 
@@ -48,7 +48,7 @@ $PSVersionTable.PSVersion
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 cd "$env:USERPROFILE\Desktop"
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit
+.\Win11-25H2-CalmMode.ps1 -Mode Audit
 ```
 
 `Audit` нічого не змінює. Він тільки читає поточні значення і створює звіт.
@@ -56,7 +56,7 @@ cd "$env:USERPROFILE\Desktop"
 ### 2. Apply: застосувати налаштування
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply
+.\Win11-25H2-CalmMode.ps1 -Mode Apply
 ```
 
 Після завершення бажано перезавантажити комп’ютер.
@@ -64,7 +64,7 @@ cd "$env:USERPROFILE\Desktop"
 ### 3. Verify: перевірити після перезавантаження
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Verify
+.\Win11-25H2-CalmMode.ps1 -Mode Verify
 ```
 
 ---
@@ -80,13 +80,13 @@ cd "$env:USERPROFILE\Desktop"
 За замовчуванням використовується `Audit`, тому випадковий запуск без параметрів не змінює систему.
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.1.ps1
+.\Win11-25H2-CalmMode.ps1
 ```
 
 це те саме, що:
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit
+.\Win11-25H2-CalmMode.ps1 -Mode Audit
 ```
 
 ---
@@ -102,6 +102,7 @@ cd "$env:USERPROFILE\Desktop"
 | `-ActiveHoursStart` | `10` | Початок active hours |
 | `-ActiveHoursEnd` | `2` | Кінець active hours |
 | `-SearchMode` | `Icon` | Вигляд пошуку на панелі задач: `Hidden`, `Icon`, `Box` |
+| `-TelemetryLevel` | `1` | Рівень diagnostic data для політики `AllowTelemetry`: `0` = Security/Off (поважається лише на Enterprise/Education/IoT, на Home/Pro ігнорується), `1` = Required (мінімум, який реально діє на Home/Pro), `2` = Enhanced, `3` = Full. За замовчуванням `1`, тобто скрипт **не вимикає** діагностику повністю на Home/Pro |
 | `-SetTaskbarLeft` | `$true` | Вирівняти taskbar ліворуч |
 | `-SkipRestorePoint` | off | Не створювати restore point у `Apply` |
 | `-NoAppCleanup` | off | Пропустити видалення Appx-пакетів |
@@ -110,16 +111,48 @@ cd "$env:USERPROFILE\Desktop"
 Приклади:
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit -SearchMode Hidden
+.\Win11-25H2-CalmMode.ps1 -Mode Audit -SearchMode Hidden
 ```
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply -FeatureUpdateDeferralDays 120 -QualityUpdateDeferralDays 7
+.\Win11-25H2-CalmMode.ps1 -Mode Apply -FeatureUpdateDeferralDays 120 -QualityUpdateDeferralDays 7
 ```
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply -NoAppCleanup
+.\Win11-25H2-CalmMode.ps1 -Mode Apply -NoAppCleanup
 ```
+
+---
+
+## Перемикачі всередині скрипта (module toggles)
+
+Крім параметрів командного рядка, на початку `.ps1` є набір булевих перемикачів, якими можна вмикати/вимикати цілі блоки. Щоб змінити поведінку, відредагуй відповідний рядок у скрипті перед запуском.
+
+| Перемикач | Default | Що вмикає |
+|---|---:|---|
+| `$EnableWindowsAIBlock` | `$true` | Windows AI / Recall / Click to Do / Paint AI |
+| `$EnableWidgetsBlock` | `$true` | Widgets / News and Interests |
+| `$EnableCloudContentBlock` | `$true` | Cloud Content / Spotlight / suggestions |
+| `$EnablePrivacyBlock` | `$true` | Advertising ID / diagnostics / feedback |
+| `$EnableSearchBlock` | `$true` | Windows Search quiet mode |
+| `$EnableStartTaskbarBlock` | `$true` | Start / Taskbar / Explorer UI |
+| `$EnableWindowsUpdateBlock` | `$true` | Windows Update deferral та active hours |
+| `$EnableManualWindowsUpdateMode` | `$false` | **Opt-in.** Вмикає `AUOptions=2` (ручне сповіщення перед завантаженням та встановленням) |
+| `$EnableTargetReleaseVersionPin` | `$false` | **Opt-in.** Закріплення feature-версії (Target Release Version). Див. попередження нижче |
+| `$EnableDeliveryOptimization` | `$true` | Вимкнення peer-to-peer Delivery Optimization |
+| `$EnableEdgeQuietMode` | `$true` | Edge Quiet Mode |
+| `$EnableDeveloperMode` | `$false` | **Opt-in.** Developer Mode / sideloading. Див. попередження нижче |
+| `$EnableLongPaths` | `$true` | Win32 long paths |
+| `$DisableFastStartup` | `$true` | Вимкнення Fast Startup (не hibernation) |
+| `$EnableGamingTweaks` | `$true` | Game DVR / Game Bar / Game Mode |
+| `$RemoveCopilotApp` | `$false` | **Opt-in.** Appx cleanup: Copilot |
+| `$RemoveTeamsPersonal` | `$false` | **Opt-in.** Appx cleanup: Teams personal |
+| `$RemoveXboxApps` | `$false` | Appx cleanup: Xbox |
+| `$RemoveOneDrive` | `$false` | Видалення OneDrive |
+
+> **Target Release Version pinning тепер opt-in.** За замовчуванням `$EnableTargetReleaseVersionPin = $false`, тому скрипт **не** закріплює feature-версію. Закріплення (`TargetReleaseVersion`, `ProductVersion`, `TargetReleaseVersionInfo`) має сенс лише якщо ти свідомо хочеш залишитися на конкретному релізі. Ризик: коли цей реліз досягне кінця сервісингу, система перестане отримувати feature- і security-оновлення, поки пінінг не зняти. `-TargetReleaseVersionInfo` впливає на закріплення тільки коли перемикач увімкнений.
+
+> **Developer Mode та sideloading тепер opt-in.** За замовчуванням `$EnableDeveloperMode = $false`. Вмикання sideloading та Developer Mode дозволяє встановлювати непідписані застосунки, що розширює поверхню атаки (security trade-off). Вмикайте лише якщо це дійсно необхідно для розробки.
 
 ---
 
@@ -128,16 +161,16 @@ cd "$env:USERPROFILE\Desktop"
 Після кожного запуску створюється папка на робочому столі:
 
 ```text
-Win11-25H2-CalmMode-v2.1-<Mode>-YYYY-MM-DD_HH-MM-SS
+Win11-25H2-CalmMode-v2.2-<Mode>-YYYY-MM-DD_HH-MM-SS
 ```
 
 У ній будуть:
 
 ```text
-Win11-25H2-CalmMode-v2.1-report.html
-Win11-25H2-CalmMode-v2.1-results.csv
-Win11-25H2-CalmMode-v2.1-results.json
-Win11-25H2-CalmMode-v2.1.log
+Win11-25H2-CalmMode-v2.2-report.html
+Win11-25H2-CalmMode-v2.2-results.csv
+Win11-25H2-CalmMode-v2.2-results.json
+Win11-25H2-CalmMode-v2.2.log
 ```
 
 У `Apply`-режимі також зберігаються `.reg` backup-файли для важливих гілок реєстру.
@@ -161,6 +194,7 @@ Win11-25H2-CalmMode-v2.1.log
 | `UnsupportedBuild` | Політика не підходить для поточної збірки |
 | `MaybeIgnoredOnEdition` | Ключ можна записати, але Windows може ігнорувати його на цій редакції |
 | `BestEffort` | Параметр застосовується як best-effort, поведінка може залежати від build/package state |
+| `RequiresVerification` | Назва/поведінка policy не повністю підтверджена для всіх build/edition. Записується, але результат варто перевірити через `Verify` / `gpresult` |
 | `DeprecatedOrLegacy` | Старий або deprecated policy, залишений для сумісності |
 | `UISetting` | Користувацький UI-твік, не завжди офіційна device policy |
 
@@ -326,7 +360,7 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 | Registry path | Name | Desired value | Призначення |
 |---|---|---:|---|
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU` | `NoAutoUpdate` | `0` | Не вимикає Windows Update |
-| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU` | `AUOptions` | `2` | Notify before download/install automatic updates |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU` | `AUOptions` | `2` | **Opt-in** (`$EnableManualWindowsUpdateMode`, default off). Ручний режим оновлень |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU` | `NoAutoRebootWithLoggedOnUsers` | `1` | Уникати auto-restart, поки користувач залогінений |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `ExcludeWUDriversInQualityUpdate` | `1` | Не включати драйвери у Windows Updates |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `SetAllowOptionalContent` | `0` | Не отримувати optional updates / gradual feature rollouts автоматично |
@@ -338,10 +372,12 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `SetActiveHours` | `1` | Увімкнути manual active hours |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `ActiveHoursStart` | default `10` | Початок active hours |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `ActiveHoursEnd` | default `2` | Кінець active hours |
-| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `TargetReleaseVersion` | `1` | Увімкнути target release version pinning |
-| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `ProductVersion` | `Windows 11` | Target product version |
-| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `TargetReleaseVersionInfo` | default `25H2` | Закріпити Windows feature version |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `TargetReleaseVersion` | `1` | **Opt-in** (`$EnableTargetReleaseVersionPin`, default off). Увімкнути target release version pinning |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `ProductVersion` | `Windows 11` | **Opt-in.** Target product version |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` | `TargetReleaseVersionInfo` | default `25H2` | **Opt-in.** Закріпити Windows feature version |
 | `HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings` | `IsContinuousInnovationOptedIn` | `0` | Вимкнути UI toggle “Get latest updates as soon as available” |
+
+> **Увага щодо Windows Update.** `AUOptions = 2` робить оновлення ручними: Windows лише повідомляє про них, але не завантажує і не встановлює автоматично, тому security-патчі не ставляться, поки користувач не підтвердить. Це **не** вимикає Windows Update і його службу — змінюється лише автоматизація. Закріплення версії (`TargetReleaseVersion*`) за замовчуванням вимкнене; вмикається перемикачем `$EnableTargetReleaseVersionPin`. Закріплення на EOL-релізі з часом блокує оновлення.
 
 ---
 
@@ -367,6 +403,8 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 ---
 
 ## 11. Developer Mode / Long Paths
+
+**Увага (Security trade-off):** Вмикання Developer Mode та sideloading (через змінну `$EnableDeveloperMode = $true`) дозволяє розгортання та запуск непідписаних/sideloaded застосунків, що розширює поверхню атаки. Використовуйте лише якщо це необхідно для розробки. За замовчуванням вимкнено.
 
 | Registry path | Name | Desired value | Призначення |
 |---|---|---:|---|
@@ -395,27 +433,25 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 |---|---|---:|---|
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR` | `AppCaptureEnabled` | `0` | Вимикає background capture / Game DVR |
 | `HKCU:\System\GameConfigStore` | `GameDVR_Enabled` | `0` | Вимикає Game DVR у GameConfigStore |
-| `HKCU:\Software\Microsoft\GameBar` | `AllowAutoGameMode` | `1` | Дозволяє Game Mode |
-| `HKCU:\Software\Microsoft\GameBar` | `AutoGameModeEnabled` | `1` | Вмикає Game Mode |
 | `HKCU:\Software\Microsoft\GameBar` | `ShowStartupPanel` | `0` | Ховає Game Bar startup panel |
 
 ---
 
 ## 14. Appx Cleanup
 
-За замовчуванням скрипт намагається прибрати:
+За замовчуванням Appx cleanup вимкнений. Щоб увімкнути видалення конкретних пакетів, треба вручну змінити відповідний toggle у скрипті:
 
 | Target | Patterns | Default |
 |---|---|---:|
-| Microsoft Copilot app | `*Copilot*`, `Microsoft.Copilot*` | enabled |
-| Microsoft Teams personal | `MSTeams*`, `MicrosoftTeams*` | enabled |
+| Microsoft Copilot app | `*Copilot*`, `Microsoft.Copilot*` | disabled |
+| Microsoft Teams personal | `MSTeams*`, `MicrosoftTeams*` | disabled |
 | Xbox apps | `Microsoft.Xbox*`, `Microsoft.GamingApp*`, `Microsoft.XboxGamingOverlay*`, `Microsoft.XboxGameOverlay*`, `Microsoft.XboxIdentityProvider*`, `Microsoft.XboxSpeechToTextOverlay*` | disabled |
 | OneDrive | `OneDriveSetup.exe /uninstall` | disabled |
 
 Щоб пропустити Appx cleanup:
 
 ```powershell
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply -NoAppCleanup
+.\Win11-25H2-CalmMode.ps1 -Mode Apply -NoAppCleanup
 ```
 
 ---
@@ -475,6 +511,8 @@ gpupdate /force
 
 Також можна скористатися System Restore, якщо restore point був створений успішно.
 
+> **Зверніть увагу:** Відновлення реєстру через rollback.reg або System Restore не відновлює автоматично видалені Appx-пакети. Їх потрібно буде встановити вручну через Microsoft Store.
+
 ---
 
 ## Перевірка вручну
@@ -510,16 +548,16 @@ gpresult /h "$env:USERPROFILE\Desktop\gpresult.html"
 
 ```powershell
 # 1. Подивитися, що буде змінено
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Audit
+.\Win11-25H2-CalmMode.ps1 -Mode Audit
 
 # 2. Застосувати
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply
+.\Win11-25H2-CalmMode.ps1 -Mode Apply
 
 # 3. Перезавантажити ПК
 Restart-Computer
 
 # 4. Перевірити
-.\Win11-25H2-CalmMode-v2.1.ps1 -Mode Verify
+.\Win11-25H2-CalmMode.ps1 -Mode Verify
 ```
 
 ---
@@ -547,12 +585,17 @@ Restart-Computer
 
 ## GitHub Actions / CI
 
-The repository can use GitHub Actions to check PowerShell syntax on every push and pull request.
+The repository uses GitHub Actions to run a full quality gate on every push and pull request.
 
-The workflow file must be located here:
+The workflow file is located here:
 
 ```text
 .github/workflows/powershell-check.yml
 ```
 
-The workflow does not apply Windows settings and does not modify the runner configuration. It only parses `.ps1` files and fails if PowerShell syntax errors are found.
+The workflow performs the following automated checks:
+- **Syntax Check:** Parses `.ps1` files and fails if PowerShell syntax errors are found.
+- **PSScriptAnalyzer:** Runs static code analysis and fails on Warnings or Errors.
+- **Pester Tests:** Runs unit tests for internal functions.
+- **Forbidden Patterns:** Scans for dangerous patterns like `Invoke-Expression`, `DownloadString`, base64, etc.
+- **Dry-run Audit:** Executes the script in `Audit` mode to ensure it runs correctly without modifying the runner configuration.

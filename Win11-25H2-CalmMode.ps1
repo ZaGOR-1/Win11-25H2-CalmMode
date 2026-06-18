@@ -1,8 +1,8 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 #requires -PSEdition Desktop
 
 <#
-Win11-25H2-CalmMode-v2.1.ps1
+Win11-25H2-CalmMode.ps1
 
 Modes:
   Audit  - reads current settings and shows what would change. Does NOT modify Windows.
@@ -19,7 +19,7 @@ Recommended:
   Run in Windows PowerShell 5.1 as Administrator.
 #>
 
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Medium")]
 param(
     [ValidateSet("Audit", "Apply", "Verify")]
     [string]$Mode = "Audit",
@@ -41,6 +41,12 @@ param(
     [ValidateSet("Hidden", "Icon", "Box")]
     [string]$SearchMode = "Icon",
 
+    # Diagnostic data level for AllowTelemetry policy.
+    # 0 = Security/Off (honored only on Enterprise/Education/IoT; ignored on Home/Pro)
+    # 1 = Required (the minimum that Home/Pro actually honor)
+    [ValidateRange(0,3)]
+    [int]$TelemetryLevel = 1,
+
     [bool]$SetTaskbarLeft = $true,
 
     [switch]$SkipRestorePoint,
@@ -60,15 +66,23 @@ $EnableSearchBlock          = $true
 $EnableStartTaskbarBlock    = $true
 $EnableWindowsUpdateBlock   = $true
 $EnableDeliveryOptimization = $true
+$EnableManualWindowsUpdateMode = $false
+
+# Target Release Version pinning is OFF by default. Pinning the feature version
+# (for example 25H2) can block future feature and security servicing once that
+# release reaches end of service. Enable only if you understand the long-term
+# update implications.
+$EnableTargetReleaseVersionPin = $false
 $EnableEdgeQuietMode        = $true
-$EnableDeveloperMode        = $true
+# SECURITY TRADE-OFF: Sideloading and Developer Mode expand the attack surface. Use only if needed for development.
+$EnableDeveloperMode        = $false
 $EnableLongPaths            = $true
 $DisableFastStartup         = $true
 $EnableGamingTweaks         = $true
 
 # App cleanup defaults. These are best-effort and can be skipped with -NoAppCleanup.
-$RemoveCopilotApp           = $true
-$RemoveTeamsPersonal        = $true
+$RemoveCopilotApp           = $false
+$RemoveTeamsPersonal        = $false
 $RemoveXboxApps             = $false
 $RemoveOneDrive             = $false
 
@@ -76,10 +90,15 @@ $RemoveOneDrive             = $false
 # GLOBALS / PRE-FLIGHT
 # ============================================================
 
-$ErrorActionPreference = "Continue"
+$activeHoursDiff = if ($ActiveHoursEnd -gt $ActiveHoursStart) { $ActiveHoursEnd - $ActiveHoursStart } else { 24 - $ActiveHoursStart + $ActiveHoursEnd }
+if ($activeHoursDiff -gt 18) {
+    Write-Host "ERROR: Active hours difference cannot exceed 18 hours (Current diff: $activeHoursDiff hours)." -ForegroundColor Red
+    exit 1
+}
 
 $script:Results = New-Object 'System.Collections.Generic.List[object]'
 $script:RegistrySettings = New-Object 'System.Collections.Generic.List[object]'
+$script:RollbackEntries = New-Object 'System.Collections.Generic.List[object]'
 
 $script:CurrentUserIsAdmin = $false
 try {
@@ -123,15 +142,21 @@ function Get-EditionGroup {
 
 $script:EditionGroup = Get-EditionGroup $script:EditionId
 
+# Single source of truth for version/branding, used in folder, file, and report names.
+$versionFile = Join-Path $PSScriptRoot "VERSION"
+$script:ScriptVersion = if (Test-Path $versionFile) { (Get-Content $versionFile).Trim() } else { "Unknown" }
+$script:ScriptName     = "Win11-25H2-CalmMode-v$script:ScriptVersion"
+$script:ScriptTitle    = "Win11 25H2 Calm Mode v$script:ScriptVersion"
+
 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $desktopPath = [Environment]::GetFolderPath("Desktop")
 if ([string]::IsNullOrWhiteSpace($desktopPath)) { $desktopPath = $env:TEMP }
 
-$script:ReportDir = Join-Path $desktopPath "Win11-25H2-CalmMode-v2.1-$Mode-$timestamp"
+$script:ReportDir = Join-Path $desktopPath "$script:ScriptName-$Mode-$timestamp"
 New-Item -ItemType Directory -Path $script:ReportDir -Force | Out-Null
 
 try {
-    Start-Transcript -Path (Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.1.log") -Force | Out-Null
+    Start-Transcript -Path (Join-Path $script:ReportDir "$script:ScriptName.log") -Force | Out-Null
 } catch {
     Write-Host "WARNING: Could not start transcript: $($_.Exception.Message)" -ForegroundColor Yellow
 }
@@ -174,7 +199,7 @@ function Add-Result {
     }) | Out-Null
 }
 
-function Set-ConsoleStatusColor {
+function Get-ConsoleStatusColor {
     param([string]$Status)
 
     switch -Wildcard ($Status) {
@@ -188,12 +213,13 @@ function Set-ConsoleStatusColor {
         "VerifyFail"         { return "Red" }
         "Error"              { return "Red" }
         "Unsupported*"       { return "Red" }
+        "RequiresVerification" { return "DarkYellow" }
         "Warning"            { return "Yellow" }
         default              { return "Gray" }
     }
 }
 
-function Print-ResultLine {
+function Write-ResultLine {
     param(
         [string]$Status,
         [string]$Category,
@@ -203,7 +229,7 @@ function Print-ResultLine {
         [string]$Message
     )
 
-    $color = Set-ConsoleStatusColor $Status
+    $color = Get-ConsoleStatusColor $Status
     $cur = if ($null -eq $CurrentValue) { "<missing>" } else { [string]$CurrentValue }
     $des = if ($null -eq $DesiredValue) { "" } else { [string]$DesiredValue }
 
@@ -284,6 +310,14 @@ function Get-Applicability {
         }
     }
 
+    if ($Setting.MinBuild -eq $script:BuildNumber -and $Setting.MinUBR -gt 0 -and $script:UBR -lt $Setting.MinUBR) {
+        return [pscustomobject]@{
+            Status = "UnsupportedBuild"
+            Message = "Requires build $($Setting.MinBuild).$($Setting.MinUBR)+; detected build $script:BuildNumber.$script:UBR."
+            CanApply = $false
+        }
+    }
+
     if ($Setting.Editions -and $Setting.Editions.Count -gt 0) {
         if ($Setting.Editions -notcontains $script:EditionGroup) {
             $support = "MaybeIgnoredOnEdition"
@@ -301,6 +335,8 @@ function Get-Applicability {
         $support = "DeprecatedOrLegacy"
     } elseif ($Setting.Confidence -eq "UISetting") {
         $support = "UISetting"
+    } elseif ($Setting.Confidence -eq "RequiresVerification") {
+        $support = "RequiresVerification"
     }
 
     return [pscustomobject]@{
@@ -320,10 +356,11 @@ function Add-RegSetting {
         [Parameter(Mandatory=$true)][string]$Description,
         [int]$MinBuild = 0,
         [string[]]$Editions = @(),
-        [ValidateSet("Official", "BestEffort", "Deprecated", "UISetting")]
+        [ValidateSet("Official", "BestEffort", "Deprecated", "UISetting", "RequiresVerification")]
         [string]$Confidence = "Official",
         [string]$Note = "",
-        [bool]$ApplyIfMaybeUnsupported = $true
+        [bool]$ApplyIfMaybeUnsupported = $true,
+        [int]$MinUBR = 0
     )
 
     $script:RegistrySettings.Add([pscustomobject]@{
@@ -338,6 +375,7 @@ function Add-RegSetting {
         Confidence = $Confidence
         Note = $Note
         ApplyIfMaybeUnsupported = $ApplyIfMaybeUnsupported
+        MinUBR = $MinUBR
     }) | Out-Null
 }
 
@@ -368,9 +406,17 @@ function Invoke-RegSetting {
         $supportText = "$supportText; $($applicability.Message)"
     }
 
-    if ($Mode -eq "Audit") {
-        $status = if ($equals) { "Compliant" } else { "WouldChange" }
-        $msg = if ($equals) { "Already matches desired value." } else { "No changes made in Audit mode." }
+    # Audit and Verify are both read-only: identical structure, only the status
+    # labels and messages differ. Drive them from one table to avoid duplication.
+    if ($Mode -eq "Audit" -or $Mode -eq "Verify") {
+        $readOnly = @{
+            Audit  = @{ Pass = "Compliant"; Fail = "WouldChange"; PassMsg = "Already matches desired value."; FailMsg = "No changes made in Audit mode." }
+            Verify = @{ Pass = "VerifyOK";   Fail = "VerifyFail";  PassMsg = "Desired registry value is present."; FailMsg = "Desired registry value is missing or different." }
+        }
+        $m = $readOnly[$Mode]
+
+        $status = if ($equals) { $m.Pass } else { $m.Fail }
+        $msg    = if ($equals) { $m.PassMsg } else { $m.FailMsg }
 
         if ($satisfiedByPolicy) {
             $msg = "Per-user TaskbarDa value is not required because Widgets are disabled by policy AllowNewsAndInterests=0."
@@ -382,32 +428,14 @@ function Invoke-RegSetting {
         }
 
         Add-Result $Setting.Category $Setting.Description $status $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText $msg
-        Print-ResultLine $status $Setting.Category $Setting.Description $current $desired $msg
-        return
-    }
-
-    if ($Mode -eq "Verify") {
-        $status = if ($equals) { "VerifyOK" } else { "VerifyFail" }
-        $msg = if ($equals) { "Desired registry value is present." } else { "Desired registry value is missing or different." }
-
-        if ($satisfiedByPolicy) {
-            $msg = "Per-user TaskbarDa value is not required because Widgets are disabled by policy AllowNewsAndInterests=0."
-        }
-
-        if ($applicability.Status -eq "UnsupportedBuild") {
-            $status = "UnsupportedBuild"
-            $msg = $applicability.Message
-        }
-
-        Add-Result $Setting.Category $Setting.Description $status $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText $msg
-        Print-ResultLine $status $Setting.Category $Setting.Description $current $desired $msg
+        Write-ResultLine $status $Setting.Category $Setting.Description $current $desired $msg
         return
     }
 
     if ($Mode -eq "Apply") {
         if (-not $applicability.CanApply) {
             Add-Result $Setting.Category $Setting.Description "Skipped" $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText "Skipped because this setting is not applicable to this Windows build/edition."
-            Print-ResultLine "Skipped" $Setting.Category $Setting.Description $current $desired "Not applicable."
+            Write-ResultLine "Skipped" $Setting.Category $Setting.Description $current $desired "Not applicable."
             return
         }
 
@@ -420,11 +448,25 @@ function Invoke-RegSetting {
             }
 
             Add-Result $Setting.Category $Setting.Description "AlreadyConfigured" $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText $alreadyMessage
-            Print-ResultLine "AlreadyConfigured" $Setting.Category $Setting.Description $current $desired $printMessage
+            Write-ResultLine "AlreadyConfigured" $Setting.Category $Setting.Description $current $desired $printMessage
+            return
+        }
+
+        if (-not $PSCmdlet.ShouldProcess("$($Setting.Path)\$($Setting.Name)", "Set $($Setting.Type) to '$desired'")) {
+            Add-Result $Setting.Category $Setting.Description "Skipped" $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText "Skipped by -WhatIf/-Confirm."
+            Write-ResultLine "Skipped" $Setting.Category $Setting.Description $current $desired "Skipped (WhatIf/Confirm)."
             return
         }
 
         try {
+            $script:RollbackEntries.Add([pscustomobject]@{
+                Path     = $Setting.Path
+                Name     = $Setting.Name
+                Type     = $Setting.Type
+                Existed  = $read.Exists
+                OldValue = if ($read.Exists) { $read.Value } else { $null }
+            }) | Out-Null
+
             if (-not (Test-Path $Setting.Path)) {
                 New-Item -Path $Setting.Path -Force | Out-Null
             }
@@ -443,19 +485,19 @@ function Invoke-RegSetting {
 
             if ($verifyOk) {
                 Add-Result $Setting.Category $Setting.Description "Changed" $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText "Value written and verified."
-                Print-ResultLine "Changed" $Setting.Category $Setting.Description $current $desired "Written and verified."
+                Write-ResultLine "Changed" $Setting.Category $Setting.Description $current $desired "Written and verified."
             } else {
                 Add-Result $Setting.Category $Setting.Description "VerifyFail" $verify.Value $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText "Value write attempted, but verification failed."
-                Print-ResultLine "VerifyFail" $Setting.Category $Setting.Description $verify.Value $desired "Write attempted but verify failed."
+                Write-ResultLine "VerifyFail" $Setting.Category $Setting.Description $verify.Value $desired "Write attempted but verify failed."
             }
         } catch {
             Add-Result $Setting.Category $Setting.Description "Error" $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText $_.Exception.Message
-            Print-ResultLine "Error" $Setting.Category $Setting.Description $current $desired $_.Exception.Message
+            Write-ResultLine "Error" $Setting.Category $Setting.Description $current $desired $_.Exception.Message
         }
     }
 }
 
-function Try-ExportRegKey {
+function Export-RegKeySafe {
     param(
         [Parameter(Mandatory=$true)][string]$RegPath,
         [Parameter(Mandatory=$true)][string]$FileName
@@ -467,14 +509,14 @@ function Try-ExportRegKey {
     if ($LASTEXITCODE -eq 0) {
         cmd /c "reg export `"$RegPath`" `"$outFile`" /y >nul 2>&1"
         if ($LASTEXITCODE -eq 0) {
-            Add-Result "Backup" "Registry export: $RegPath" "Changed" "" $outFile $RegPath "" "Official" "Backup" "Registry key exported."
+            Add-Result "Backup" "Registry export: $RegPath" "Changed" "" "" $RegPath "" "Official" "Backup" "Exported to: $FileName"
             Write-Host "Exported registry backup: $RegPath" -ForegroundColor Green
         } else {
-            Add-Result "Backup" "Registry export: $RegPath" "Warning" "" $outFile $RegPath "" "Official" "Backup" "reg export failed."
+            Add-Result "Backup" "Registry export: $RegPath" "Warning" "" "" $RegPath "" "Official" "Backup" "reg export failed."
             Write-Host "WARNING: Could not export $RegPath" -ForegroundColor Yellow
         }
     } else {
-        Add-Result "Backup" "Registry export: $RegPath" "Skipped" "" $outFile $RegPath "" "Official" "Backup" "Registry key not found."
+        Add-Result "Backup" "Registry export: $RegPath" "Skipped" "" "" $RegPath "" "Official" "Backup" "Registry key not found."
         Write-Host "Registry key not found, skipped backup: $RegPath" -ForegroundColor DarkYellow
     }
 }
@@ -493,14 +535,102 @@ function Invoke-RegistryBackup {
         "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock",
         "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
+        "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo",
+        "HKCU\Software\Microsoft\Windows\CurrentVersion\Privacy",
+        "HKCU\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement",
+        "HKCU\Software\Microsoft\Siuf\Rules",
+        "HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR",
+        "HKCU\System\GameConfigStore",
+        "HKCU\Software\Microsoft\GameBar",
         "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem",
         "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power",
-        "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies"
+        "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies",
+        "HKLM\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings",
+        "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
     )
 
     foreach ($key in $backupKeys) {
         $fileName = ($key -replace '[\\/:*?"<>| ]', '_') + ".reg"
-        Try-ExportRegKey -RegPath $key -FileName $fileName
+        Export-RegKeySafe -RegPath $key -FileName $fileName
+    }
+}
+
+function ConvertTo-RegFileHivePath {
+    param([string]$PsPath)
+
+    # Convert "HKLM:\SOFTWARE\..." or "HKCU:\Software\..." to .reg hive notation.
+    $p = $PsPath -replace '^HKLM:\\', 'HKEY_LOCAL_MACHINE\'
+    $p = $p     -replace '^HKCU:\\', 'HKEY_CURRENT_USER\'
+    $p = $p     -replace '^HKCR:\\', 'HKEY_CLASSES_ROOT\'
+    $p = $p     -replace '^HKU:\\',  'HKEY_USERS\'
+    return $p
+}
+
+function Format-RegValueLine {
+    param(
+        [string]$Name,
+        [string]$Type,
+        [object]$Value,
+        [bool]$Delete
+    )
+
+    # Value name escaping for .reg: backslash and double-quote.
+    $escapedName = ($Name -replace '\\', '\\') -replace '"', '\"'
+
+    if ($Delete) {
+        return "`"$escapedName`"=-"
+    }
+
+    if ($Type -eq "DWord") {
+        $dword = ('{0:x8}' -f [int]$Value)
+        return "`"$escapedName`"=dword:$dword"
+    }
+
+    # String (REG_SZ)
+    $escapedValue = ([string]$Value -replace '\\', '\\') -replace '"', '\"'
+    return "`"$escapedName`"=`"$escapedValue`""
+}
+
+function Write-RollbackRegFile {
+    if ($Mode -ne "Apply") { return }
+    if ($script:RollbackEntries.Count -eq 0) { return }
+
+    $rollbackPath = Join-Path $script:ReportDir "rollback.reg"
+
+    $lines = New-Object 'System.Collections.Generic.List[string]'
+    $lines.Add("Windows Registry Editor Version 5.00") | Out-Null
+    $lines.Add("") | Out-Null
+    $lines.Add("; Auto-generated rollback for Win11 25H2 Calm Mode.") | Out-Null
+    $lines.Add("; Restores each value changed in this Apply run to its prior state.") | Out-Null
+    $lines.Add("; Values that did not exist before are removed (=-).") | Out-Null
+    $lines.Add("; Note: this does not recreate registry keys that the script created.") | Out-Null
+    $lines.Add("") | Out-Null
+
+    # Group by key so each [key] header is written once.
+    $byKey = $script:RollbackEntries | Group-Object Path
+    foreach ($group in $byKey) {
+        $hivePath = ConvertTo-RegFileHivePath $group.Name
+        $lines.Add("[$hivePath]") | Out-Null
+
+        foreach ($entry in $group.Group) {
+            if ($entry.Existed) {
+                $lines.Add((Format-RegValueLine -Name $entry.Name -Type $entry.Type -Value $entry.OldValue -Delete $false)) | Out-Null
+            } else {
+                $lines.Add((Format-RegValueLine -Name $entry.Name -Type $entry.Type -Value $null -Delete $true)) | Out-Null
+            }
+        }
+
+        $lines.Add("") | Out-Null
+    }
+
+    try {
+        # .reg files must be ANSI or UTF-16 LE; UTF-16 LE is safest for regedit import.
+        $lines | Out-File -FilePath $rollbackPath -Encoding Unicode
+        Add-Result "Backup" "Rollback file" "Changed" "" $rollbackPath "" "" "Official" "Backup" "Per-value rollback.reg generated. Double-click to restore prior values."
+        Write-Host "Rollback file written: $rollbackPath" -ForegroundColor Green
+    } catch {
+        Add-Result "Backup" "Rollback file" "Warning" "" $rollbackPath "" "" "Official" "Backup" "Could not write rollback.reg: $($_.Exception.Message)"
+        Write-Host "WARNING: Could not write rollback.reg: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
 
@@ -513,13 +643,46 @@ function Invoke-RestorePoint {
 
     Write-Section "Restore point"
 
+    if (-not $PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Create System Restore point")) {
+        Add-Result "Preflight" "Restore point" "Skipped" "" "" "" "" "Official" "Supported" "Skipped by -WhatIf/-Confirm."
+        return
+    }
+
+    # Windows throttles restore points to one per 24h by default via
+    # SystemRestorePointCreationFrequency. Temporarily set it to 0 so our
+    # checkpoint is not silently skipped, then restore the prior value.
+    $srKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
+    $freqRead = Get-RegValueSafe -Path $srKey -Name "SystemRestorePointCreationFrequency"
+    $freqChanged = $false
     try {
-        Checkpoint-Computer -Description "Before Win11 25H2 Calm Mode v2.1" -RestorePointType "MODIFY_SETTINGS"
+        if (-not (Test-Path $srKey)) { New-Item -Path $srKey -Force | Out-Null }
+        New-ItemProperty -Path $srKey -Name "SystemRestorePointCreationFrequency" -Value 0 -PropertyType DWord -Force | Out-Null
+        $freqChanged = $true
+    } catch {}
+
+    try {
+        Checkpoint-Computer -Description "Before $script:ScriptTitle" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
         Add-Result "Preflight" "Restore point" "Changed" "" "" "" "" "Official" "Supported" "Restore point created."
         Write-Host "Restore point created." -ForegroundColor Green
     } catch {
-        Add-Result "Preflight" "Restore point" "Warning" "" "" "" "" "Official" "Supported" "Restore point was not created: $($_.Exception.Message)"
-        Write-Host "WARNING: Restore point was not created. System Protection may be disabled." -ForegroundColor Yellow
+        $msg = $_.Exception.Message
+        $hint = "System Protection may be disabled for the system drive. Enable it: Settings > System > About > System protection, or run 'Enable-ComputerRestore -Drive C:\\'. A rollback.reg is still generated as a fallback."
+        if ($msg -match "1440|frequency|already") {
+            $hint = "Windows allows only one restore point per 24h by default and one may already exist for today. The script's per-value rollback.reg still provides a fallback."
+        }
+        Add-Result "Preflight" "Restore point" "Warning" "" "" "" "" "Official" "Supported" "Restore point was not created: $msg $hint"
+        Write-Host "WARNING: Restore point was not created. $hint" -ForegroundColor Yellow
+    } finally {
+        # Restore the original throttling value to avoid leaving the system more permissive.
+        try {
+            if ($freqChanged) {
+                if ($freqRead.Exists) {
+                    New-ItemProperty -Path $srKey -Name "SystemRestorePointCreationFrequency" -Value ([int]$freqRead.Value) -PropertyType DWord -Force | Out-Null
+                } else {
+                    Remove-ItemProperty -Path $srKey -Name "SystemRestorePointCreationFrequency" -ErrorAction SilentlyContinue
+                }
+            }
+        } catch {}
     }
 }
 
@@ -574,45 +737,51 @@ function Invoke-AppCleanupTarget {
         return
     }
 
-    $matches = Get-AppxMatches -Patterns $Patterns
-    $count = @($matches.CurrentUser).Count + @($matches.AllUsers).Count + @($matches.Provisioned).Count
-    $currentSummary = "CurrentUser=$(@($matches.CurrentUser).Count); AllUsers=$(@($matches.AllUsers).Count); Provisioned=$(@($matches.Provisioned).Count)"
+    $appxMatches = Get-AppxMatches -Patterns $Patterns
+    $count = @($appxMatches.CurrentUser).Count + @($appxMatches.AllUsers).Count + @($appxMatches.Provisioned).Count
+    $currentSummary = "CurrentUser=$(@($appxMatches.CurrentUser).Count); AllUsers=$(@($appxMatches.AllUsers).Count); Provisioned=$(@($appxMatches.Provisioned).Count)"
 
     if ($Mode -eq "Audit") {
         $status = if ($count -eq 0) { "Compliant" } else { "WouldRemove" }
         Add-Result "Appx Cleanup" $Name $status $currentSummary "Absent" "" "" "BestEffort" "BestEffort" "Audit only; no packages removed."
-        Print-ResultLine $status "Appx Cleanup" $Name $currentSummary "Absent" "Audit only."
+        Write-ResultLine $status "Appx Cleanup" $Name $currentSummary "Absent" "Audit only."
         return
     }
 
     if ($Mode -eq "Verify") {
         $status = if ($count -eq 0) { "VerifyOK" } else { "VerifyFail" }
         Add-Result "Appx Cleanup" $Name $status $currentSummary "Absent" "" "" "BestEffort" "BestEffort" "Verify Appx package absence."
-        Print-ResultLine $status "Appx Cleanup" $Name $currentSummary "Absent" "Verify only."
+        Write-ResultLine $status "Appx Cleanup" $Name $currentSummary "Absent" "Verify only."
         return
     }
 
     if ($Mode -eq "Apply") {
         if ($count -eq 0) {
             Add-Result "Appx Cleanup" $Name "AlreadyConfigured" $currentSummary "Absent" "" "" "BestEffort" "BestEffort" "No matching packages found."
-            Print-ResultLine "AlreadyConfigured" "Appx Cleanup" $Name $currentSummary "Absent" "No matching packages."
+            Write-ResultLine "AlreadyConfigured" "Appx Cleanup" $Name $currentSummary "Absent" "No matching packages."
+            return
+        }
+
+        if (-not $PSCmdlet.ShouldProcess($Name, "Remove Appx package(s)")) {
+            Add-Result "Appx Cleanup" $Name "Skipped" $currentSummary "Absent" "" "" "BestEffort" "BestEffort" "Skipped by -WhatIf/-Confirm."
+            Write-ResultLine "Skipped" "Appx Cleanup" $Name $currentSummary "Absent" "Skipped (WhatIf/Confirm)."
             return
         }
 
         try {
-            foreach ($pkg in $matches.CurrentUser) {
+            foreach ($pkg in $appxMatches.CurrentUser) {
                 Write-Host "Removing current-user Appx: $($pkg.Name)" -ForegroundColor Yellow
                 Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction SilentlyContinue
             }
 
-            foreach ($pkg in $matches.AllUsers) {
+            foreach ($pkg in $appxMatches.AllUsers) {
                 try {
                     Write-Host "Attempting all-users Appx removal: $($pkg.Name)" -ForegroundColor Yellow
                     Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
                 } catch {}
             }
 
-            foreach ($prov in $matches.Provisioned) {
+            foreach ($prov in $appxMatches.Provisioned) {
                 Write-Host "Removing provisioned Appx: $($prov.DisplayName)" -ForegroundColor Yellow
                 Remove-AppxProvisionedPackage -Online -PackageName $prov.PackageName -ErrorAction SilentlyContinue | Out-Null
             }
@@ -624,14 +793,78 @@ function Invoke-AppCleanupTarget {
 
             if ($afterCount -eq 0) {
                 Add-Result "Appx Cleanup" $Name "Changed" $currentSummary "Absent" "" "" "BestEffort" "BestEffort" "Packages removed and verified absent."
-                Print-ResultLine "Changed" "Appx Cleanup" $Name $currentSummary "Absent" "Removed and verified."
+                Write-ResultLine "Changed" "Appx Cleanup" $Name $currentSummary "Absent" "Removed and verified."
             } else {
                 Add-Result "Appx Cleanup" $Name "Warning" $afterSummary "Absent" "" "" "BestEffort" "BestEffort" "Some packages remain. This can happen for system/user-protected packages."
-                Print-ResultLine "Warning" "Appx Cleanup" $Name $afterSummary "Absent" "Some packages remain."
+                Write-ResultLine "Warning" "Appx Cleanup" $Name $afterSummary "Absent" "Some packages remain."
             }
         } catch {
             Add-Result "Appx Cleanup" $Name "Error" $currentSummary "Absent" "" "" "BestEffort" "BestEffort" $_.Exception.Message
-            Print-ResultLine "Error" "Appx Cleanup" $Name $currentSummary "Absent" $_.Exception.Message
+            Write-ResultLine "Error" "Appx Cleanup" $Name $currentSummary "Absent" $_.Exception.Message
+        }
+    }
+}
+
+function Invoke-ExeCleanupTarget {
+    param(
+        [string]$Name,
+        [string[]]$ExePaths,
+        [string]$VerifyExePath,
+        [string]$UninstallArgs,
+        [bool]$Enabled
+    )
+
+    if (-not $Enabled) {
+        Add-Result "App Cleanup" $Name "Skipped" "" "Absent" "" "" "BestEffort" "DisabledByConfig" "This cleanup target is disabled in script toggles."
+        return
+    }
+
+    if ($NoAppCleanup) {
+        Add-Result "App Cleanup" $Name "Skipped" "" "Absent" "" "" "BestEffort" "SkippedBySwitch" "Skipped by -NoAppCleanup."
+        return
+    }
+
+    $isInstalled = $false
+    $foundExe = $null
+    foreach ($path in $ExePaths) {
+        if (Test-Path $path) {
+            $isInstalled = $true
+            $foundExe = $path
+            break
+        }
+    }
+
+    if ($Mode -eq "Audit") {
+        $status = if ($isInstalled) { "WouldRemove" } else { "Compliant" }
+        Add-Result "App Cleanup" $Name $status $isInstalled "False" "" "" "BestEffort" "BestEffort" "Audit only."
+        Write-ResultLine $status "App Cleanup" $Name $isInstalled "False" "Audit only."
+        return
+    }
+
+    if ($Mode -eq "Verify") {
+        $exists = Test-Path $VerifyExePath
+        $status = if (-not $exists) { "VerifyOK" } else { "VerifyFail" }
+        Add-Result "App Cleanup" $Name $status $exists "False" $VerifyExePath "" "BestEffort" "BestEffort" "Verify exe absence."
+        Write-ResultLine $status "App Cleanup" $Name $exists "False" "Verify only."
+        return
+    }
+
+    if ($Mode -eq "Apply") {
+        if (-not $PSCmdlet.ShouldProcess($Name, "Uninstall")) {
+            Add-Result "App Cleanup" $Name "Skipped" "" "Uninstalled" "" "" "BestEffort" "BestEffort" "Skipped by -WhatIf/-Confirm."
+            Write-ResultLine "Skipped" "App Cleanup" $Name "" "Uninstalled" "Skipped (WhatIf/Confirm)."
+            return
+        }
+
+        try {
+            if ($isInstalled) {
+                Start-Process $foundExe $UninstallArgs -Wait -ErrorAction SilentlyContinue
+                Add-Result "App Cleanup" $Name "Changed" "Installed" "Uninstalled" $foundExe "" "BestEffort" "BestEffort" "Uninstall command executed."
+            } else {
+                Add-Result "App Cleanup" $Name "AlreadyConfigured" "Not found" "Uninstalled" "" "" "BestEffort" "BestEffort" "Exe not found."
+            }
+        } catch {
+            Add-Result "App Cleanup" $Name "Error" "Unknown" "Uninstalled" "" "" "BestEffort" "BestEffort" $_.Exception.Message
         }
     }
 }
@@ -643,37 +876,7 @@ function Invoke-AppCleanup {
     Invoke-AppCleanupTarget -Name "Microsoft Teams personal" -Patterns @("MSTeams*", "MicrosoftTeams*") -Enabled $RemoveTeamsPersonal
     Invoke-AppCleanupTarget -Name "Xbox apps" -Patterns @("Microsoft.Xbox*", "Microsoft.GamingApp*", "Microsoft.XboxGamingOverlay*", "Microsoft.XboxGameOverlay*", "Microsoft.XboxIdentityProvider*", "Microsoft.XboxSpeechToTextOverlay*") -Enabled $RemoveXboxApps
 
-    if ($RemoveOneDrive) {
-        if ($Mode -eq "Audit") {
-            $oneDriveInstalled = (Test-Path "$env:SystemRoot\System32\OneDriveSetup.exe") -or (Test-Path "$env:SystemRoot\SysWOW64\OneDriveSetup.exe")
-            $status = if ($oneDriveInstalled) { "WouldRemove" } else { "Compliant" }
-            Add-Result "App Cleanup" "OneDrive uninstall" $status $oneDriveInstalled "False" "" "" "BestEffort" "BestEffort" "Audit only."
-            Print-ResultLine $status "App Cleanup" "OneDrive uninstall" $oneDriveInstalled "False" "Audit only."
-        } elseif ($Mode -eq "Verify") {
-            $oneDriveExe = Join-Path $env:LOCALAPPDATA "Microsoft\OneDrive\OneDrive.exe"
-            $exists = Test-Path $oneDriveExe
-            $status = if (-not $exists) { "VerifyOK" } else { "VerifyFail" }
-            Add-Result "App Cleanup" "OneDrive uninstall" $status $exists "False" $oneDriveExe "" "BestEffort" "BestEffort" "Verify OneDrive absence."
-            Print-ResultLine $status "App Cleanup" "OneDrive uninstall" $exists "False" "Verify only."
-        } elseif ($Mode -eq "Apply" -and -not $NoAppCleanup) {
-            $oneDriveSetup1 = "$env:SystemRoot\System32\OneDriveSetup.exe"
-            $oneDriveSetup2 = "$env:SystemRoot\SysWOW64\OneDriveSetup.exe"
-
-            try {
-                if (Test-Path $oneDriveSetup1) {
-                    Start-Process $oneDriveSetup1 "/uninstall" -Wait -ErrorAction SilentlyContinue
-                    Add-Result "App Cleanup" "OneDrive uninstall" "Changed" "Installed" "Uninstalled" $oneDriveSetup1 "" "BestEffort" "BestEffort" "OneDrive uninstall command executed."
-                } elseif (Test-Path $oneDriveSetup2) {
-                    Start-Process $oneDriveSetup2 "/uninstall" -Wait -ErrorAction SilentlyContinue
-                    Add-Result "App Cleanup" "OneDrive uninstall" "Changed" "Installed" "Uninstalled" $oneDriveSetup2 "" "BestEffort" "BestEffort" "OneDrive uninstall command executed."
-                } else {
-                    Add-Result "App Cleanup" "OneDrive uninstall" "AlreadyConfigured" "Not found" "Uninstalled" "" "" "BestEffort" "BestEffort" "OneDriveSetup.exe not found."
-                }
-            } catch {
-                Add-Result "App Cleanup" "OneDrive uninstall" "Error" "Unknown" "Uninstalled" "" "" "BestEffort" "BestEffort" $_.Exception.Message
-            }
-        }
-    }
+    Invoke-ExeCleanupTarget -Name "OneDrive uninstall" -ExePaths @("$env:SystemRoot\System32\OneDriveSetup.exe", "$env:SystemRoot\SysWOW64\OneDriveSetup.exe") -VerifyExePath (Join-Path $env:LOCALAPPDATA "Microsoft\OneDrive\OneDrive.exe") -UninstallArgs "/uninstall" -Enabled $RemoveOneDrive
 }
 
 function Add-PreflightResults {
@@ -687,18 +890,18 @@ function Add-PreflightResults {
     $status = if ($isWindows11) { "Compliant" } else { "Warning" }
     $versionCheckMessage = if ($isWindows11) { "Windows 11 detected by build number >= 22000. ProductName can be a legacy value." } else { "Build number is below 22000; this does not look like Windows 11." }
     Add-Result "Preflight" "Windows version" $status $versionMessage "Windows 11 $TargetReleaseVersionInfo" "" "" "Official" "Detected" $versionCheckMessage
-    Print-ResultLine $status "Preflight" "Windows version" $versionMessage "Windows 11 $TargetReleaseVersionInfo" $versionCheckMessage
+    Write-ResultLine $status "Preflight" "Windows version" $versionMessage "Windows 11 $TargetReleaseVersionInfo" $versionCheckMessage
 
     $targetStatus = if ($script:DisplayVersion -eq $TargetReleaseVersionInfo) { "Compliant" } else { "Warning" }
     Add-Result "Preflight" "Target release match" $targetStatus $script:DisplayVersion $TargetReleaseVersionInfo "" "" "Official" "Detected" "If this is not 25H2, adjust -TargetReleaseVersionInfo or do not use TargetReleaseVersion pinning."
-    Print-ResultLine $targetStatus "Preflight" "Target release match" $script:DisplayVersion $TargetReleaseVersionInfo "Check target version."
+    Write-ResultLine $targetStatus "Preflight" "Target release match" $script:DisplayVersion $TargetReleaseVersionInfo "Check target version."
 
     $adminStatus = if ($script:CurrentUserIsAdmin) { "Compliant" } else { "Warning" }
     Add-Result "Preflight" "Administrator" $adminStatus $script:CurrentUserIsAdmin "True for Apply" "" "" "Official" "Detected" "Apply mode requires Administrator."
-    Print-ResultLine $adminStatus "Preflight" "Administrator" $script:CurrentUserIsAdmin "True for Apply" ""
+    Write-ResultLine $adminStatus "Preflight" "Administrator" $script:CurrentUserIsAdmin "True for Apply" ""
 }
 
-function Build-RegistrySettings {
+function Initialize-RegistrySettings {
     # ---------------- Windows AI / Recall / Copilot ----------------
     if ($EnableWindowsAIBlock) {
         $WindowsAI_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI"
@@ -706,18 +909,18 @@ function Build-RegistrySettings {
         $WindowsCopilot_HKCU = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
         $PaintPolicies_HKLM = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Paint"
 
-        Add-RegSetting "Windows AI" $WindowsAI_HKLM "AllowRecallEnablement" "DWord" 0 "Make Recall optional component unavailable" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy; prevents users from enabling Recall where supported."
-        Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableAIDataAnalysis" "DWord" 1 "Disable Recall snapshot saving / AI data analysis" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy."
-        Add-RegSetting "Windows AI" $WindowsAI_HKCU "DisableAIDataAnalysis" "DWord" 1 "Disable Recall snapshot saving for current user" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "User-scoped WindowsAI policy."
-        Add-RegSetting "Windows AI" $WindowsAI_HKLM "AllowRecallExport" "DWord" 0 "Block Recall export where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy where supported."
+        Add-RegSetting "Windows AI" $WindowsAI_HKLM "AllowRecallEnablement" "DWord" 0 "Make Recall optional component unavailable" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy; prevents users from enabling Recall where supported." $true 3915
+        Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableAIDataAnalysis" "DWord" 1 "Disable Recall snapshot saving / AI data analysis" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy." $true 3915
+        Add-RegSetting "Windows AI" $WindowsAI_HKCU "DisableAIDataAnalysis" "DWord" 1 "Disable Recall snapshot saving for current user" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "User-scoped WindowsAI policy." $true 3915
+        Add-RegSetting "Windows AI" $WindowsAI_HKLM "AllowRecallExport" "DWord" 0 "Block Recall export where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "WindowsAI policy where supported."
 
-        Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableClickToDo" "DWord" 1 "Disable Click to Do" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy."
-        Add-RegSetting "Windows AI" $WindowsAI_HKCU "DisableClickToDo" "DWord" 1 "Disable Click to Do for current user" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "User-scoped WindowsAI policy."
-        Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableSettingsAgent" "DWord" 1 "Disable AI agent/search in Settings where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy; availability can depend on build/region/edition."
+        Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableClickToDo" "DWord" 1 "Disable Click to Do" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "WindowsAI policy."
+        Add-RegSetting "Windows AI" $WindowsAI_HKCU "DisableClickToDo" "DWord" 1 "Disable Click to Do for current user" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "User-scoped WindowsAI policy."
+        Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableSettingsAgent" "DWord" 1 "Disable AI agent/search in Settings where supported" 26100 @("Enterprise","Education","IoTEnterprise") "RequiresVerification" "Policy name is not fully confirmed across builds/regions/editions. Verify with gpresult or the registry after Apply before relying on it."
 
-        Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableCocreator" "DWord" 1 "Disable Paint Cocreator" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy."
-        Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableGenerativeFill" "DWord" 1 "Disable Paint Generative Fill" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy."
-        Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableImageCreator" "DWord" 1 "Disable Paint Image Creator" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy."
+        Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableCocreator" "DWord" 1 "Disable Paint Cocreator" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy." $true 3360
+        Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableGenerativeFill" "DWord" 1 "Disable Paint Generative Fill" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy." $true 3360
+        Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableImageCreator" "DWord" 1 "Disable Paint Image Creator" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy." $true 3360
 
         Add-RegSetting "Copilot" $WindowsCopilot_HKCU "TurnOffWindowsCopilot" "DWord" 1 "Turn off legacy Windows Copilot" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Deprecated" "Microsoft marks this old Copilot policy as deprecated; kept for legacy behavior."
         Add-RegSetting "Copilot" "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowCopilotButton" "DWord" 0 "Hide Copilot taskbar button if present" 22000 @() "UISetting" "Explorer UI setting; build-dependent."
@@ -729,8 +932,8 @@ function Build-RegistrySettings {
     if ($EnableWidgetsBlock) {
         $Dsh_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
         Add-RegSetting "Widgets" $Dsh_HKLM "AllowNewsAndInterests" "DWord" 0 "Disable Widgets / News and Interests" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Policy-backed Widgets disable."
-        Add-RegSetting "Widgets" $Dsh_HKLM "DisableWidgetsBoard" "DWord" 1 "Disable Widgets board where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Newer Widgets policy; may be Insider/build-dependent."
-        Add-RegSetting "Widgets" $Dsh_HKLM "DisableWidgetsOnLockScreen" "DWord" 1 "Disable Widgets on lock screen where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Newer Widgets policy; may be Insider/build-dependent."
+        Add-RegSetting "Widgets" $Dsh_HKLM "DisableWidgetsBoard" "DWord" 1 "Disable Widgets board where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "Newer Widgets policy; may be Insider/build-dependent and not fully documented. Verify after Apply."
+        Add-RegSetting "Widgets" $Dsh_HKLM "DisableWidgetsOnLockScreen" "DWord" 1 "Disable Widgets on lock screen where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "Newer Widgets policy; may be Insider/build-dependent and not fully documented. Verify after Apply."
         Add-RegSetting "Widgets" "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarDa" "DWord" 0 "Hide Widgets button on taskbar" 22000 @() "UISetting" "Explorer taskbar UI setting."
     }
 
@@ -783,7 +986,7 @@ function Build-RegistrySettings {
     if ($EnablePrivacyBlock) {
         Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo" "DisabledByGroupPolicy" "DWord" 1 "Disable Advertising ID by policy" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Privacy" "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" "DWord" 0 "Disable Advertising ID for current user" 22000 @() "UISetting" ""
-        Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" "DWord" 1 "Set diagnostic data to Required on Pro/Home" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "On Pro/Home, 1 means Required diagnostic data. 0 is limited to specific enterprise scenarios."
+        Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" "DWord" $TelemetryLevel "Set diagnostic data level (AllowTelemetry=$TelemetryLevel)" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "On Pro/Home, 1 means Required diagnostic data; 0 (Security/Off) is honored only on Enterprise/Education/IoT. Configurable via -TelemetryLevel."
         Add-RegSetting "Privacy" "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" "TailoredExperiencesWithDiagnosticDataEnabled" "DWord" 0 "Disable tailored experiences" 22000 @() "UISetting" ""
         Add-RegSetting "Privacy" "HKCU:\Software\Microsoft\Siuf\Rules" "NumberOfSIUFInPeriod" "DWord" 0 "Disable feedback frequency prompts" 22000 @() "UISetting" ""
         Add-RegSetting "Privacy" "HKCU:\Software\Microsoft\Siuf\Rules" "PeriodInNanoSeconds" "DWord" 0 "Disable feedback prompt period" 22000 @() "UISetting" ""
@@ -843,7 +1046,9 @@ function Build-RegistrySettings {
         $AU_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
 
         Add-RegSetting "Windows Update" $AU_HKLM "NoAutoUpdate" "DWord" 0 "Keep Windows Update enabled" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Does not disable the Windows Update service."
-        Add-RegSetting "Windows Update" $AU_HKLM "AUOptions" "DWord" 2 "Notify before download/install automatic updates" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "AUOptions=2 is notify for download and auto install in classic Automatic Updates policy."
+    if ($EnableManualWindowsUpdateMode) {
+        Add-RegSetting "Windows Update" $AU_HKLM "AUOptions" "DWord" 2 "Notify before downloading and installing updates (manual updates)" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "AUOptions=2 means Windows notifies before BOTH download and install, so updates become manual and security patches are not installed until the user acts. This does NOT disable Windows Update or its service; it only reduces update automation."
+    }
         Add-RegSetting "Windows Update" $AU_HKLM "NoAutoRebootWithLoggedOnUsers" "DWord" 1 "Avoid auto-restart while user is logged on" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "May be affected by modern Windows Update restart policies."
         Add-RegSetting "Windows Update" $WU_HKLM "ExcludeWUDriversInQualityUpdate" "DWord" 1 "Do not include drivers with Windows Updates" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Windows Update" $WU_HKLM "SetAllowOptionalContent" "DWord" 0 "Do not automatically receive optional updates / CFRs" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
@@ -855,9 +1060,13 @@ function Build-RegistrySettings {
         Add-RegSetting "Windows Update" $WU_HKLM "SetActiveHours" "DWord" 1 "Set active hours manually" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Windows Update" $WU_HKLM "ActiveHoursStart" "DWord" $ActiveHoursStart "Active hours start" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Windows Update" $WU_HKLM "ActiveHoursEnd" "DWord" $ActiveHoursEnd "Active hours end" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
-        Add-RegSetting "Windows Update" $WU_HKLM "TargetReleaseVersion" "DWord" 1 "Enable target release version pinning" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
-        Add-RegSetting "Windows Update" $WU_HKLM "ProductVersion" "String" "Windows 11" "Target product version" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
-        Add-RegSetting "Windows Update" $WU_HKLM "TargetReleaseVersionInfo" "String" $TargetReleaseVersionInfo "Pin Windows feature version to $TargetReleaseVersionInfo" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
+        if ($EnableTargetReleaseVersionPin) {
+            # Opt-in only. Pinning can stop the device from moving off an end-of-service
+            # release, which eventually blocks feature and security updates.
+            Add-RegSetting "Windows Update" $WU_HKLM "TargetReleaseVersion" "DWord" 1 "Enable target release version pinning" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Opt-in via `$EnableTargetReleaseVersionPin. Can block updates once the pinned release reaches end of service."
+            Add-RegSetting "Windows Update" $WU_HKLM "ProductVersion" "String" "Windows 11" "Target product version" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Opt-in via `$EnableTargetReleaseVersionPin."
+            Add-RegSetting "Windows Update" $WU_HKLM "TargetReleaseVersionInfo" "String" $TargetReleaseVersionInfo "Pin Windows feature version to $TargetReleaseVersionInfo" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Opt-in via `$EnableTargetReleaseVersionPin. Pins the feature version to $TargetReleaseVersionInfo."
+        }
         Add-RegSetting "Windows Update UI" "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" "IsContinuousInnovationOptedIn" "DWord" 0 "Turn off 'Get latest updates as soon as available' UI toggle" 22000 @() "UISetting" "UI mirror/toggle; SetAllowOptionalContent is the policy-backed control."
     }
 
@@ -873,7 +1082,7 @@ function Build-RegistrySettings {
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "BackgroundModeEnabled" "DWord" 0 "Do not keep Edge background apps running after close" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "HideFirstRunExperience" "DWord" 1 "Hide Edge first-run experience" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "LaunchEdgeOnWindowsStartupEnabled" "DWord" 0 "Do not launch Edge automatically at Windows startup" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
-        Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "PromotionalTabsEnabled" "DWord" 0 "Disable Edge promotional tabs" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
+        Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "PromotionalTabsEnabled" "DWord" 0 "Disable Edge promotional tabs" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Deprecated" "Deprecated Edge policy; kept for legacy compatibility."
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "HubsSidebarEnabled" "DWord" 0 "Disable Edge sidebar/hubs where supported" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
     }
 
@@ -881,8 +1090,8 @@ function Build-RegistrySettings {
     if ($EnableDeveloperMode) {
         $AppxPolicy_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx"
         $AppModelUnlock_HKLM = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
-        Add-RegSetting "Developer" $AppxPolicy_HKLM "AllowDevelopmentWithoutDevLicense" "DWord" 1 "Enable Developer Mode policy" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Allows development without developer license."
-        Add-RegSetting "Developer" $AppxPolicy_HKLM "AllowAllTrustedApps" "DWord" 1 "Allow all trusted apps / sideloading policy" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" ""
+        Add-RegSetting "Developer" $AppxPolicy_HKLM "AllowDevelopmentWithoutDevLicense" "DWord" 1 "Enable Developer Mode policy" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "SECURITY TRADE-OFF: Allows development without developer license."
+        Add-RegSetting "Developer" $AppxPolicy_HKLM "AllowAllTrustedApps" "DWord" 1 "Allow all trusted apps / sideloading policy" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "SECURITY TRADE-OFF: Allows sideloading of apps."
         Add-RegSetting "Developer" $AppModelUnlock_HKLM "AllowDevelopmentWithoutDevLicense" "DWord" 1 "Enable Developer Mode UI compatibility key" 22000 @() "UISetting" "Compatibility/UI key used by Windows Developer settings."
         Add-RegSetting "Developer" $AppModelUnlock_HKLM "AllowAllTrustedApps" "DWord" 1 "Allow trusted apps UI compatibility key" 22000 @() "UISetting" "Compatibility/UI key used by Windows Developer settings."
     }
@@ -901,8 +1110,6 @@ function Build-RegistrySettings {
     if ($EnableGamingTweaks) {
         Add-RegSetting "Gaming" "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" "AppCaptureEnabled" "DWord" 0 "Disable background capture / Game DVR" 22000 @() "UISetting" ""
         Add-RegSetting "Gaming" "HKCU:\System\GameConfigStore" "GameDVR_Enabled" "DWord" 0 "Disable Game DVR in GameConfigStore" 22000 @() "UISetting" ""
-        Add-RegSetting "Gaming" "HKCU:\Software\Microsoft\GameBar" "AllowAutoGameMode" "DWord" 1 "Allow Game Mode" 22000 @() "UISetting" ""
-        Add-RegSetting "Gaming" "HKCU:\Software\Microsoft\GameBar" "AutoGameModeEnabled" "DWord" 1 "Enable Game Mode" 22000 @() "UISetting" ""
         Add-RegSetting "Gaming" "HKCU:\Software\Microsoft\GameBar" "ShowStartupPanel" "DWord" 0 "Hide Game Bar startup panel" 22000 @() "UISetting" ""
     }
 }
@@ -920,9 +1127,18 @@ function Invoke-GpUpdateAndExplorer {
 
     Write-Section "Apply policy refresh"
 
+    if (-not $PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Refresh Group Policy and restart Explorer")) {
+        Add-Result "Apply" "Policy refresh" "Skipped" "" "" "" "" "Official" "Supported" "Skipped by -WhatIf/-Confirm."
+        return
+    }
+
     try {
         gpupdate /force | Out-Host
-        Add-Result "Apply" "gpupdate /force" "Changed" "" "" "" "" "Official" "Supported" "Group Policy update command executed."
+        if ($LASTEXITCODE -eq 0) {
+            Add-Result "Apply" "gpupdate /force" "Changed" "" "" "" "" "Official" "Supported" "Group Policy update command executed."
+        } else {
+            Add-Result "Apply" "gpupdate /force" "Warning" "" "" "" "" "Official" "Supported" "gpupdate exited with code $LASTEXITCODE."
+        }
     } catch {
         Add-Result "Apply" "gpupdate /force" "Warning" "" "" "" "" "Official" "Supported" "gpupdate failed: $($_.Exception.Message)"
     }
@@ -957,9 +1173,9 @@ function Invoke-GpUpdateAndExplorer {
 function Write-Reports {
     Write-Section "Writing reports"
 
-    $csvPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.1-results.csv"
-    $htmlPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.1-report.html"
-    $jsonPath = Join-Path $script:ReportDir "Win11-25H2-CalmMode-v2.1-results.json"
+    $csvPath = Join-Path $script:ReportDir "$script:ScriptName-results.csv"
+    $htmlPath = Join-Path $script:ReportDir "$script:ScriptName-report.html"
+    $jsonPath = Join-Path $script:ReportDir "$script:ScriptName-results.json"
 
     try {
         $script:Results | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
@@ -990,25 +1206,29 @@ tr:nth-child(even) { background: #fafafa; }
 </style>
 "@
 
+    $encTitle = [System.Net.WebUtility]::HtmlEncode($script:ScriptTitle)
+    $encProduct = [System.Net.WebUtility]::HtmlEncode($script:ProductName)
+    $encReportDir = [System.Net.WebUtility]::HtmlEncode($script:ReportDir)
+
     $html = @"
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Win11 25H2 Calm Mode v2.1 Report</title>
+<title>$encTitle Report</title>
 $css
 </head>
 <body>
-<h1>Win11 25H2 Calm Mode v2.1 Report</h1>
+<h1>$encTitle Report</h1>
 <div class="meta">
 Mode: <b>$Mode</b><br>
 Generated: <b>$(Get-Date)</b><br>
-Product: <b>$script:ProductName</b><br>
+Product: <b>$encProduct</b><br>
 DisplayVersion: <b>$script:DisplayVersion</b><br>
 Build: <b>$script:BuildNumber.$script:UBR</b><br>
 Edition: <b>$script:EditionId</b> / group <b>$script:EditionGroup</b><br>
 Admin: <b>$script:CurrentUserIsAdmin</b><br>
-Report folder: <b>$script:ReportDir</b>
+Report folder: <b>$encReportDir</b>
 </div>
 <div class="note">
 <b>Important:</b> Registry verification proves that the value was written/read successfully. It cannot always prove that Windows UI fully honors a policy, especially for edition-limited or build-dependent policies. Such entries are marked as BestEffort, DeprecatedOrLegacy, UISetting, or MaybeIgnoredOnEdition.
@@ -1033,19 +1253,20 @@ $resultsHtml
 # MAIN
 # ============================================================
 
-Write-Section "Win11 25H2 Calm Mode v2.1 - $Mode"
+Write-Section "$script:ScriptTitle - $Mode"
 
 Write-Host "Mode: $Mode" -ForegroundColor Cyan
 Write-Host "Report folder: $script:ReportDir" -ForegroundColor Yellow
 Write-Host "Windows: $script:ProductName | DisplayVersion=$script:DisplayVersion | Build=$script:BuildNumber.$script:UBR | Edition=$script:EditionId" -ForegroundColor Cyan
 
 Add-PreflightResults
-Build-RegistrySettings
+Initialize-RegistrySettings
 
 Invoke-RegistryBackup
 Invoke-RestorePoint
 
 Invoke-AllRegistrySettings
+Write-RollbackRegFile
 Invoke-AppCleanup
 Invoke-GpUpdateAndExplorer
 Write-Reports
@@ -1058,14 +1279,17 @@ Write-Host $script:ReportDir -ForegroundColor Yellow
 if ($Mode -eq "Audit") {
     Write-Host ""
     Write-Host "No changes were made. To apply:" -ForegroundColor Cyan
-    Write-Host ".\Win11-25H2-CalmMode-v2.1.ps1 -Mode Apply" -ForegroundColor Yellow
+    Write-Host ".\$script:ScriptName.ps1 -Mode Apply" -ForegroundColor Yellow
 }
 
 if ($Mode -eq "Apply") {
     Write-Host ""
     Write-Host "Recommended: restart your laptop after Apply mode." -ForegroundColor Cyan
     Write-Host "Then run:" -ForegroundColor Cyan
-    Write-Host ".\Win11-25H2-CalmMode-v2.1.ps1 -Mode Verify" -ForegroundColor Yellow
+    Write-Host ".\$script:ScriptName.ps1 -Mode Verify" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "To undo registry changes, double-click rollback.reg in the report folder," -ForegroundColor Cyan
+    Write-Host "or use the System Restore point created before Apply." -ForegroundColor Cyan
 }
 
 try { Stop-Transcript | Out-Null } catch {}

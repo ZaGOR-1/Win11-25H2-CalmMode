@@ -4,6 +4,35 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [v2.2] - 2026-06-18
+
+### Added
+
+- `-WhatIf` / `-Confirm` support: the script now declares `SupportsShouldProcess`, so `Apply` can be previewed without changing the system.
+- `-TelemetryLevel` parameter (`0`–`3`) to control the `AllowTelemetry` diagnostic data policy. Default `1` (Required), which is the minimum actually honored on Home/Pro; the script does not force telemetry fully off.
+- New report status `RequiresVerification` for policies whose exact name or behavior is not fully confirmed across builds/editions.
+- Real `.gitignore` (previously only a `gitignore-snippet.txt` example existed), so local files and generated reports/backups are not committed by accident.
+- Local script `New-ReleaseArchive.ps1` to easily package safe release `.zip` archives without dirty files like `.git`.
+- Deeper versioning support via `$MinUBR` (Update Build Revision) checking for strict policies like Windows AI (Recall).
+- Fully automated CI/CD checks via GitHub Actions: includes `PSScriptAnalyzer`, a forbidden patterns check, and automated Dry-run Audit mode.
+
+### Changed
+
+- Target Release Version pinning is now **opt-in** via the in-script toggle `$EnableTargetReleaseVersionPin` (default: off). Pinning a feature version can block future feature/security servicing once that release reaches end of service.
+- Reclassified `DisableSettingsAgent`, `DisableWidgetsBoard`, and `DisableWidgetsOnLockScreen` from `Official` to `RequiresVerification`.
+- Corrected and clarified the `AUOptions=2` description. This manual Windows Update policy is now completely **opt-in**. Use `$EnableManualWindowsUpdateMode = $true` to activate it.
+- Edge `PromotionalTabsEnabled` policy is marked as `Deprecated` to reflect Microsoft documentation.
+- Appx cleanup for Copilot and Teams is now strictly opt-in (`$false` by default).
+- **Architectural change:** the main script was renamed from `Win11-25H2-CalmMode-v2.2.ps1` to a stable `Win11-25H2-CalmMode.ps1` without a hardcoded version string.
+- The project version is now stored in a dedicated `VERSION` file, which is dynamically read by the script and CI/CD pipelines during release packaging. This makes future updates cleaner and eliminates the need to rename the file.
+- Improved Windows AI and Paint AI policy accuracy by adding strict `MinUBR` checks.
+- Enhanced release hygiene: the ZIP hash (`.sha256`) is now generated externally alongside the archive instead of being embedded. Release build scripts now strictly exclude audit reports.
+
+### Docs
+
+- Documented the `-TelemetryLevel` parameter and the in-script module toggles in the README.
+- Added explicit warnings about Target Release Version pinning and the `AUOptions=2` update behavior.
+
 ## [v2.1] - 2026-05-22
 
 ### Fixed
@@ -20,7 +49,7 @@ This project uses a simple versioning style: `vMAJOR.MINOR`.
 - Improved verification logic for taskbar-related UI settings.
 - Reduced unnecessary warnings in the preflight check.
 
-## [v2.0] - 2026-05-22
+## [v2.0] - 2026-05-10
 
 ### Added
 
@@ -42,7 +71,7 @@ This project uses a simple versioning style: `vMAJOR.MINOR`.
   - defer feature updates;
   - defer quality updates;
   - disable optional feature rollout behavior;
-  - pin target release to Windows 11 25H2.
+  - pin target release to Windows 11 25H2 (made opt-in starting with v2.2).
 - Added Delivery Optimization configuration.
 - Added Microsoft Edge Quiet Mode:
   - disable Startup Boost;
@@ -82,7 +111,7 @@ This project uses a simple versioning style: `vMAJOR.MINOR`.
 - The script does not remove Edge WebView2 Runtime.
 - The script does not remove .NET, Visual C++ Redistributables, certificates, or critical Windows components.
 
-## [v1.0] - 2026-05-22
+## [v1.0] - 2026-04-15
 
 ### Added
 
