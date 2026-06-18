@@ -47,13 +47,13 @@ foreach ($pattern in $filesToInclude) {
 }
 
 $checksumsFile = "checksums.txt"
-if (Test-Path $checksumsFile) { Remove-Item $checksumsFile -Force }
+$checksumLines = New-Object 'System.Collections.Generic.List[string]'
 
 # 4. Generate file SHA256 hashes
 Write-Host "Generating SHA256 checksums..."
 Get-ChildItem -Path $releaseDir -File | ForEach-Object {
     $hash = Get-Sha256Hex -Path $_.FullName
-    "$hash  $($_.Name)" | Add-Content -Path $checksumsFile
+    $checksumLines.Add("$hash  $($_.Name)")
 }
 
 # 5. Create ZIP Archive
@@ -65,8 +65,15 @@ Compress-Archive -Path "$releaseDir\*" -DestinationPath $zipFile
 
 # 6. Generate ZIP SHA256
 $zipHash = Get-Sha256Hex -Path $zipFile
-"$zipHash  $zipFile" | Add-Content -Path $checksumsFile
-"$zipHash  $zipFile" | Set-Content -Path "$zipFile.sha256"
+$checksumLines.Add("$zipHash  $zipFile")
+
+# Write checksum files with LF line endings and UTF-8 (no BOM) for portability
+# (so the same file verifies cleanly with sha256sum on Linux/macOS runners too).
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$checksumsPath = Join-Path (Get-Location).Path $checksumsFile
+$sha256Path    = Join-Path (Get-Location).Path "$zipFile.sha256"
+[System.IO.File]::WriteAllText($checksumsPath, (($checksumLines -join "`n") + "`n"), $utf8NoBom)
+[System.IO.File]::WriteAllText($sha256Path, "$zipHash  $zipFile`n", $utf8NoBom)
 Write-Host "Zip Hash: $zipHash"
 
 # 7. Clean up build folder
