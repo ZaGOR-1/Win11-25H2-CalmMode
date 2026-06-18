@@ -79,7 +79,10 @@ jobs:
       - name: Run Pester tests
         shell: pwsh
         run: |
-          Install-Module Pester -Force -SkipPublisherCheck -ErrorAction Stop
+          # Pin Pester 4.x: the test file uses the legacy `Should Be` syntax,
+          # which Pester 5 removed in favor of `Should -Be`.
+          Install-Module Pester -RequiredVersion 4.10.1 -Force -SkipPublisherCheck -ErrorAction Stop
+          Import-Module Pester -RequiredVersion 4.10.1 -Force
           $result = Invoke-Pester -Path .\Win11-25H2-CalmMode.Tests.ps1 -PassThru
           if ($result.FailedCount -gt 0) {
               exit 1
