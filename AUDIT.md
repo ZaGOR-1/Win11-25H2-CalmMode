@@ -83,7 +83,8 @@
 - **Було:** тести на `Should Be` (Pester v4), а CI ставив `Install-Module Pester -Force` → Pester v5, де `Should Be` прибрано.
 - **Виправлення:** у `powershell-check.yml` запінено `Pester 4.10.1`
   (`Install-Module Pester -RequiredVersion 4.10.1 -Force -SkipPublisherCheck` + `Import-Module -RequiredVersion 4.10.1`).
-  Обрано пін (а не міграцію на `Should -Be`), бо це гарантовано не ламає наявні тести, а перевірити міграцію в поточному середовищі неможливо.
+  Додатково (розділ 9) асерції мігровано на `Should -Be` — він валідний в обох Pester 4/5. Пін лишається через
+  top-level dot-source у тесті (модель виконання Pester 4).
 - **Як перевірити:** крок «Run Pester tests» у CI — 0 failed.
 
 ### 5.3. Git-тег `v2.2` — ✅ створено локально (push робиться вручну)
@@ -139,20 +140,23 @@
 
 ---
 
-## 9. Code fixes
+## 9. Code fixes — ✅ УСІ ВИПРАВЛЕНО
 
-- **`Win11-25H2-CalmMode.ps1`:** змін не потрібно. Синтаксис парситься без помилок; логіка Audit/Apply/Verify,
+- **`Win11-25H2-CalmMode.ps1` — ✅ змін не потрібно.** Синтаксис парситься без помилок; логіка Audit/Apply/Verify,
   backup, rollback, applicability (MinBuild/MinUBR/Editions) коректна; небезпечних патернів немає.
-- **`New-ReleaseArchive.ps1`:** уже виправлено (helper `Get-Sha256Hex` через .NET замість `Get-FileHash`;
-  `.gitignore` прибрано зі списку файлів релізу — архів тепер 7 файлів).
-- **`Win11-25H2-CalmMode.Tests.ps1`:** мігрувати `Should Be` → `Should -Be` (див. 5.2). Тести систему не змінюють (dot-source лише функцій) — це добре.
+- **`New-ReleaseArchive.ps1` — ✅ виправлено.** Helper `Get-Sha256Hex` через .NET замість `Get-FileHash`;
+  `.gitignore` прибрано зі списку файлів релізу (архів тепер 7 файлів); checksums пишуться з LF + UTF-8 без BOM.
+- **`Win11-25H2-CalmMode.Tests.ps1` — ✅ мігровано `Should Be` → `Should -Be`.** Синтаксис `-Be` валідний і в
+  Pester 4 (на який запінено CI), і в Pester 5 — тож тести лишаються зеленими зараз і forward-сумісні. Парситься без
+  помилок. Тести систему не змінюють (dot-source лише функцій). Пін Pester 4 збережено через top-level dot-source
+  через `Invoke-Expression` (модель виконання Pester 4); повна Pester-5-міграція = винести dot-source у `BeforeAll` (опційно, на майбутнє).
 
 ---
 
 ## 10. CI / release fixes
 
 - **`powershell-check.yml`:**
-  - Pester: пінити v4 або синхронізувати з міграцією тестів на v5 (5.2).
+  - Pester: ✅ запінено 4.10.1; тести мігровано на `Should -Be` (cross-version). Коментар у воркфлоу оновлено.
   - PSScriptAnalyzer запускається з `-Severity Error,Warning`; локально модуль перевірити не вдалося
     (середовище не вантажить модуль) — **перевірити на чистій машині/у CI**, що немає Warning, які завалять крок.
   - Syntax check і forbidden-pattern scan коректні; forbidden scan свідомо виключає `Tests.ps1` (правильно).

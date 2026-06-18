@@ -79,8 +79,9 @@ jobs:
       - name: Run Pester tests
         shell: pwsh
         run: |
-          # Pin Pester 4.x: the test file uses the legacy `Should Be` syntax,
-          # which Pester 5 removed in favor of `Should -Be`.
+          # Pin Pester 4.x: the test dot-sources the script's functions at top
+          # level, which relies on the Pester 4 execution model (Pester 5 splits
+          # discovery/run). Assertions already use the cross-version `Should -Be`.
           Install-Module Pester -RequiredVersion 4.10.1 -Force -SkipPublisherCheck -ErrorAction Stop
           Import-Module Pester -RequiredVersion 4.10.1 -Force
           $result = Invoke-Pester -Path .\Win11-25H2-CalmMode.Tests.ps1 -PassThru
