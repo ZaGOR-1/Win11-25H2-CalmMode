@@ -1,147 +1,505 @@
-Ти — senior Windows/PowerShell engineer, security reviewer і maintainer open-source інструментів.
+Ти — senior Windows/PowerShell engineer, security reviewer, release engineer і maintainer open-source проєктів.
 
-Проаналізуй весь мій проєкт повністю. Це Windows 11 tuning / privacy / calm mode інструмент, який має працювати обережно, без агресивного debloat, без вимкнення критичних служб і з можливістю backup/rollback.
+Проаналізуй поточний стан проєкту **Win11 25H2 CalmMode** повністю.
 
-Твоє завдання: зробити повний аудит проєкту на баги, ризики, погану архітектуру, небезпечні місця, неточну документацію і можливості покращення.
+Це Windows 11 tuning / privacy / calm mode інструмент. Він має бути обережним policy-based конфігуратором, а не агресивним debloater.
 
-ВАЖЛИВО:
+Твоє завдання — зробити повний аудит поточного стану проєкту і окремо перевірити проблеми, які вже були знайдені раніше.
 
-* Спочатку нічого не змінюй у файлах.
-* Не запускай `Apply`, не змінюй систему, не запускай скрипти з правами адміністратора.
-* Не видаляй Appx-пакети, не міняй registry, не чіпай Windows services.
-* Працюй як reviewer: читай код, README, changelog, CI, конфіги, структуру папок.
-* Якщо запускаєш команди, то тільки безпечні: syntax check, lint, grep/search, tree/list files.
-* Не пропонуй “агресивний debloat”, вимкнення Defender, Firewall, Windows Update, Store, WebView2, UAC або security-фіч.
-* Не вигадуй неіснуючі Microsoft policies. Якщо policy/build support сумнівний — познач це як `BestEffort` або `RequiresVerification`.
+---
 
-Перевір особливо уважно:
+# Важливі правила безпеки
 
-1. Безпека
+* Нічого не змінюй у системі.
+* Не запускай `Apply`.
+* Не змінюй registry.
+* Не видаляй Appx-пакети.
+* Не змінюй Windows services.
+* Не запускай команди з правами адміністратора.
+* Не вимикай Defender, Firewall, Windows Update, Store, WebView2, UAC.
+* Не пропонуй агресивний debloat.
+* Не запускай невідомі скрипти, які можуть змінити систему.
+* Працюй як reviewer/release engineer.
 
-* Чи немає небезпечних дій без підтвердження.
-* Чи немає прихованого завантаження коду з інтернету.
-* Чи немає encoded/base64 command, eval-подібної логіки, зайвого bypass execution policy.
-* Чи не вимикаються критичні security-компоненти Windows.
-* Чи достатньо прозоро користувачу пояснюється, що саме зміниться.
+Можна запускати тільки безпечні команди:
 
-2. PowerShell-якість
+* перегляд структури файлів;
+* `git status`;
+* `git log --oneline -5`;
+* перевірка ZIP-вмісту;
+* перевірка SHA256;
+* PowerShell syntax check;
+* PSScriptAnalyzer;
+* Pester tests, якщо вони не змінюють систему;
+* grep/search по коду.
 
-* Помилки синтаксису.
-* Неправильна робота з registry.
-* Неправильна обробка `HKLM`, `HKCU`, policy paths.
-* Неправильна робота з правами адміністратора.
-* Проблеми з `ShouldProcess`, `-WhatIf`, `-Confirm`.
-* Проблеми з error handling.
-* Проблеми з idempotency: повторний запуск не має ламати систему.
-* Проблеми з логами, reports, CSV/JSON/HTML output.
-* Місця, де варто додати helper-функції або спростити код.
+---
 
-3. Backup / Rollback
+# Що треба проаналізувати
 
-* Чи backup робиться до змін.
-* Чи rollback реально відкочує те, що було змінено.
-* Чи чесно документація пояснює обмеження rollback.
-* Особливо перевір Appx removal: registry rollback не повертає видалені provisioned packages.
-* Чи restore point створюється коректно і чи є fallback, якщо він недоступний.
+## 1. Загальний стан проєкту
 
-4. Windows 11 / 25H2 / policy correctness
+Перевір:
 
-* Чи коректно названі WindowsAI / Recall / Copilot / Widgets / Edge / Update policies.
-* Чи є ризик, що деякі registry keys ігноруються в Home/Pro edition.
-* Чи є build-dependent policies.
-* Чи правильно обробляються unsupported builds.
-* Чи треба додати статуси типу `Supported`, `UnsupportedBuild`, `MaybeIgnoredOnEdition`, `BestEffort`.
+* структуру файлів;
+* основний PowerShell-скрипт;
+* README;
+* CHANGELOG;
+* LICENSE;
+* VERSION;
+* RELEASE.md;
+* AUDIT.md;
+* PROMPT.md;
+* GEMINI.md;
+* `.claude`;
+* `.github/workflows`;
+* `New-ReleaseArchive.ps1`;
+* release ZIP;
+* checksums;
+* тести.
 
-5. Документація
+Дай оцінку:
 
-* Чи README чесний і зрозумілий.
-* Чи достатньо попереджень перед Apply.
-* Чи зрозуміло, що робить Audit / Apply / Verify / Rollback.
-* Чи не обіцяє README більше, ніж реально робить код.
-* Чи є нормальна інструкція для запуску.
-* Чи є приклади команд.
-* Чи є секція “What this tool will NOT do”.
-* Чи є секція known limitations.
+* код;
+* документація;
+* CI;
+* release hygiene;
+* готовність до публічного релізу.
 
-6. Release hygiene
+---
 
-* Чи не потрапили в архів `.git`, `.claude/settings.local.json`, локальні файли, кеші, тимчасові звіти.
-* Чи нормальний `.gitignore`.
-* Чи треба додати release checklist.
-* Чи треба додати SHA256 hash для release zip.
-* Чи варто додати code signing або хоча б інструкцію про перевірку hash.
+# Обов’язково перевір попередньо знайдені проблеми
 
-7. CI / тести
+## 1. Outer ZIP vs real release ZIP
 
-* Чи достатньо GitHub Actions.
-* Чи треба додати PSScriptAnalyzer.
-* Чи треба додати Pester-тести.
-* Які саме функції варто покрити тестами.
-* Чи можна додати dry-run тестування без зміни системи.
+У попередньому аналізі було знайдено, що outer archive, тобто архів робочої папки, містив:
 
-8. Архітектура
+```text
+.git/
+.claude/settings.local.json
+```
 
-* Чи не занадто великий один `.ps1` файл.
-* Чи варто винести policies/config у окремий `.json` або `.psd1`.
-* Чи варто розділити core logic, reporting, registry operations, appx operations.
-* Чи легко додавати нову policy.
-* Чи є дублювання коду.
+Але всередині був окремий чистий release ZIP:
 
-Формат відповіді:
+```text
+Win11-25H2-CalmMode-v2.2.zip
+Win11-25H2-CalmMode-v2.2.zip.sha256
+checksums.txt
+```
 
-# Загальна оцінка
+Перевір:
 
-Дай оцінку від 1 до 10 і коротко поясни.
+* чи досі outer ZIP містить `.git/`;
+* чи досі outer ZIP містить `.claude/settings.local.json`;
+* чи є всередині окремий release ZIP;
+* чи саме release ZIP чистий;
+* чи не треба публікувати тільки release ZIP, а не весь outer archive;
+* чи немає в release ZIP локальних файлів, `.git`, `.claude`, audit reports, logs, `.reg`, cache/temp.
 
-# Найкращі сторони проєкту
+Очікуваний нормальний release ZIP має містити тільки щось типу:
+
+```text
+CHANGELOG_EN.md
+CHANGELOG_UA.md
+LICENSE
+README.md
+VERSION
+Win11-25H2-CalmMode.ps1
+Win11-25H2-CalmMode.Tests.ps1
+```
+
+---
+
+## 2. Git state / dirty working tree
+
+У попередньому аналізі було знайдено, що git state був неготовий до релізу:
+
+```text
+branch is ahead of origin/main
+changes not staged for commit
+modified files
+```
+
+Перевір:
+
+```powershell
+git status
+git log --oneline -5
+git tag
+```
+
+Дай відповідь:
+
+* чи clean working tree;
+* чи є uncommitted changes;
+* чи є untracked files;
+* чи branch ahead/behind origin;
+* чи існує тег версії;
+* чи тег відповідає фактичному ZIP;
+* чи `VERSION` відповідає назві release ZIP;
+* чи не зроблений релізний ZIP із незакомічених змін.
+
+Для нормального релізу має бути:
+
+```text
+nothing to commit, working tree clean
+```
+
+Якщо `v2.2` уже публікувався, не радь переписувати тег. Краще запропонуй підняти версію до `v2.3`.
+
+---
+
+## 3. SHA256 / checksums
+
+У попередньому аналізі SHA256 для release ZIP збігався.
+
+Перевір ще раз:
+
+* чи `.sha256` відповідає реальному ZIP;
+* чи `checksums.txt` валідний;
+* чи `checksums.txt` не застарів;
+* чи hash самого ZIP створений окремим файлом поруч із ZIP;
+* чи не намагається скрипт записати hash ZIP всередину ZIP після створення.
+
+Очікувано мають бути:
+
+```text
+Win11-25H2-CalmMode-v2.2.zip
+Win11-25H2-CalmMode-v2.2.zip.sha256
+checksums.txt
+```
+
+---
+
+## 4. New-ReleaseArchive.ps1
+
+Перевір release script:
+
+```text
+New-ReleaseArchive.ps1
+```
+
+Особливо:
+
+* чи він не копіює всі `*.md` без розбору;
+* чи він не затягує старі audit reports;
+* чи він не затягує `.git`;
+* чи він не затягує `.claude/settings.local.json`;
+* чи він не затягує вкладені ZIP;
+* чи версія береться з `VERSION`;
+* чи назва ZIP правильна;
+* чи `.sha256` створюється поруч із ZIP;
+* чи `checksums.txt` валідний;
+* чи build folder чиститься після створення релізу.
+
+---
+
+## 5. AUDIT.md
+
+У попередньому аналізі `AUDIT.md` був порожній.
+
+Перевір:
+
+* чи `AUDIT.md` досі 0 байт;
+* чи його треба заповнити;
+* чи його краще прибрати з репозиторію/release.
+
+Якщо він порожній, запропонуй такий мінімальний зміст:
+
+```markdown
+# Safety Audit
+
+- No remote code download.
+- No encoded payloads.
+- No Defender/Firewall/UAC disable.
+- Apply requires Administrator.
+- Appx cleanup is opt-in.
+- Target release pinning is opt-in.
+- Manual Windows Update mode is opt-in.
+- Rollback limitations documented.
+```
+
+---
+
+## 6. README: Target Release Version
+
+У попередньому аналізі README трохи неточно описував параметр:
+
+```text
+-TargetReleaseVersionInfo
+```
+
+Перевір, чи README ясно пояснює, що Target Release Version pinning **вимкнений за замовчуванням** і використовується тільки якщо:
+
+```powershell
+$EnableTargetReleaseVersionPin = $true
+```
+
+Правильне формулювання приблизно таке:
+
+```text
+Версія Windows для Target Release Version pinning. Використовується тільки якщо `$EnableTargetReleaseVersionPin = $true`.
+```
+
+Також перевір, чи README попереджає, що pinning на EOL-релізі може з часом блокувати feature updates.
+
+---
+
+## 7. README: NoAppCleanup
+
+У попередньому аналізі була потенційна плутанина з прикладом:
+
+```powershell
+.\Win11-25H2-CalmMode.ps1 -Mode Apply -NoAppCleanup
+```
+
+Бо Appx cleanup уже disabled by default.
+
+Перевір, чи README пояснює:
+
+* Appx cleanup вимкнений за замовчуванням;
+* `-NoAppCleanup` — це додатковий запобіжник;
+* Appx cleanup спрацює тільки якщо відповідні toggles вручну ввімкнені;
+* rollback registry не повертає видалені Appx/provisioned packages.
+
+---
+
+## 8. Безпечні дефолти
+
+Перевір у коді, що ці значення досі `$false`:
+
+```powershell
+$EnableManualWindowsUpdateMode = $false
+$EnableTargetReleaseVersionPin = $false
+$EnableDeveloperMode = $false
+
+$RemoveCopilotApp = $false
+$RemoveTeamsPersonal = $false
+$RemoveXboxApps = $false
+$RemoveOneDrive = $false
+```
+
+Якщо щось із цього стало `$true`, поясни ризик.
+
+---
+
+## 9. WindowsAI / Recall / Paint AI metadata
+
+Перевір, що виправлені metadata для WindowsAI policies:
+
+* `AllowRecallEnablement` має правильний `MinUBR`;
+* `DisableAIDataAnalysis` має правильний `MinUBR`;
+* Paint AI policies мають правильний `MinUBR`;
+* `AllowRecallExport`, `DisableClickToDo`, `DisableSettingsAgent` не позначені занадто впевнено як стабільні, якщо вони Insider/preview/build-dependent;
+* використовується `RequiresVerification`, `BestEffort`, `UnsupportedBuild`, `MaybeIgnoredOnEdition`, якщо треба.
+
+Особливо перевір:
+
+```text
+AllowRecallEnablement
+DisableAIDataAnalysis
+AllowRecallExport
+DisableClickToDo
+DisableSettingsAgent
+DisableCocreator
+DisableGenerativeFill
+DisableImageCreator
+```
+
+Не вигадуй Microsoft policies. Якщо не впевнений — познач як `RequiresVerification`.
+
+---
+
+## 10. PowerShell safety scan
+
+Перевір головний `.ps1` на небезпечні патерни:
+
+```text
+DownloadString
+Invoke-WebRequest
+Start-BitsTransfer
+FromBase64String
+EncodedCommand
+Invoke-Expression
+Set-MpPreference
+DisableRealtimeMonitoring
+DisableAntiSpyware
+mpssvc
+wuauserv
+UsoSvc
+bits
+hosts
+ExecutionPolicy Bypass
+```
+
+Поясни, чи є реальний ризик, чи це false positive.
+
+Особливо важливо: проєкт не має:
+
+* вимикати Defender;
+* вимикати Firewall;
+* вимикати Windows Update service;
+* ламати Store;
+* ламати WebView2;
+* блокувати Microsoft domains;
+* виконувати remote scripts.
+
+---
+
+## 11. Audit / Apply / Verify / Rollback
+
+Перевір:
+
+* `Audit` не змінює систему;
+* `Verify` не змінює систему;
+* `Apply` вимагає admin;
+* backup створюється перед змінами;
+* rollback файл створюється;
+* restore point створюється або чесно показується warning;
+* rollback documentation не обіцяє більше, ніж реально може;
+* `-WhatIf` / `-Confirm` працюють;
+* повторний запуск не має ламати систему.
+
+---
+
+## 12. CI / tests
+
+Перевір:
+
+```text
+.github/workflows/powershell-check.yml
+.github/workflows/release.yml
+Win11-25H2-CalmMode.Tests.ps1
+PSScriptAnalyzerSettings.psd1
+```
+
+Перевір:
+
+* чи syntax check працюватиме;
+* чи dry-run Audit запускається через правильний shell;
+* чи PSScriptAnalyzer не падає на `Write-Host`, якщо це дозволено через settings;
+* чи Pester tests не змінюють систему;
+* чи release workflow створює правильний ZIP;
+* чи release workflow завантажує ZIP, `.sha256`, `checksums.txt`.
+
+---
+
+# Формат відповіді
+
+Відповідай так:
+
+## 1. Загальна оцінка
+
+Оціни від 1 до 10:
+
+* код;
+* документація;
+* CI;
+* release hygiene;
+* готовність до релізу.
+
+## 2. Короткий висновок
+
+Скажи прямо:
+
+* готовий до релізу;
+* майже готовий;
+* тільки beta/preview;
+* не готовий.
+
+## 3. Що вже добре
 
 Список сильних сторін.
 
-# Critical issues
+## 4. Перевірка попередніх проблем
 
-Тільки критичні проблеми, які можуть реально нашкодити системі, безпеці або користувачу.
+Зроби таблицю:
 
-# High priority issues
+```markdown
+| Проблема | Статус | Коментар |
+|---|---|---|
+```
 
-Серйозні проблеми, які бажано виправити перед релізом.
+Обов’язково включи:
 
-# Medium priority improvements
+* outer ZIP містить `.git`;
+* outer ZIP містить `.claude/settings.local.json`;
+* release ZIP чистий;
+* SHA256 збігається;
+* git working tree clean/dirty;
+* AUDIT.md порожній/заповнений;
+* README TargetReleaseVersionInfo;
+* README NoAppCleanup;
+* WindowsAI MinUBR;
+* release script;
+* CI.
 
-Корисні покращення, але не блокери.
+## 5. Critical blockers
 
-# Low priority / polish
+Тільки те, що реально блокує публічний реліз.
 
-Косметика, стиль, дрібні покращення.
+Для кожного пункту:
 
-# Документація: що виправити
+* проблема;
+* чому це ризик;
+* як виправити;
+* як перевірити.
 
-Конкретно по README / CHANGELOG / LICENSE / comments.
+## 6. High priority issues
 
-# Код: що виправити
+Серйозні проблеми перед релізом.
 
-Конкретні файли, функції, місця, логіка.
+## 7. Medium priority issues
 
-# Тести і CI
+Корисні покращення.
 
-Що саме додати: PSScriptAnalyzer, Pester, syntax checks, release workflow.
+## 8. Low priority / polish
 
-# Безпечний план виправлень
+Косметика.
 
-Дай покроковий план:
+## 9. Конкретний план виправлень
+
+Покроково:
 
 1. Що виправити першим.
 2. Що другим.
-3. Що можна залишити на потім.
+3. Що третім.
+4. Що можна залишити на потім.
 
-# Готові задачі для GitHub Issues
+## 10. Pre-release checklist
 
-Створи список issue у форматі:
+Дай checkbox checklist:
 
-* Title:
-* Priority:
-* Description:
-* Acceptance criteria:
+```markdown
+- [ ] ...
+```
 
-# Висновок
+## 11. Safe release procedure
 
-Скажи чесно, чи готовий проєкт до публічного релізу, чи краще ще допрацювати.
+Напиши безпечну процедуру:
+
+```powershell
+git status
+git add .
+git commit -m "Finalize v2.2 release"
+git tag v2.2
+git push
+git push --tags
+.\New-ReleaseArchive.ps1
+```
+
+Але якщо `v2.2` уже був опублікований, запропонуй краще:
+
+```powershell
+# bump VERSION to 2.3
+git add .
+git commit -m "Release v2.3"
+git tag v2.3
+git push
+git push --tags
+.\New-ReleaseArchive.ps1
+```
+
+## 12. Фінальний висновок
+
+Скажи чесно, чи можна зараз випускати в маси, чи ще треба доробити.
