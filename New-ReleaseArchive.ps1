@@ -37,8 +37,7 @@ $filesToInclude = @(
     "LICENSE",
     "VERSION",
     "Win11-25H2-CalmMode.ps1",
-    "Win11-25H2-CalmMode.Tests.ps1",
-    ".gitignore"
+    "Win11-25H2-CalmMode.Tests.ps1"
 )
 
 foreach ($pattern in $filesToInclude) {

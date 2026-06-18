@@ -59,7 +59,7 @@
 - **`-WhatIf`/`-Confirm`** працюють (`SupportsShouldProcess`).
 - **Звіти** HTML/CSV/JSON з HTML-екрануванням; transcript-лог.
 - **README структурований:** є розділи «Що скрипт НЕ робить», «Відомі нюанси», Official references, Disclaimer, CI.
-- **Релізний zip чистий:** 8 файлів, без `.git/`, без `.claude/settings.local.json`, без вкладеного zip, без `.reg`/логів/звітів.
+- **Релізний zip чистий:** 7 файлів, без `.git/`, без `.claude/settings.local.json`, без `.gitignore`, без вкладеного zip, без `.reg`/логів/звітів.
 - **Хеші збігаються:** усі per-file SHA256 у `checksums.txt` відповідають робочому дереву; `.zip.sha256` відповідає фактичному zip.
 
 ---
@@ -100,14 +100,17 @@
 
 ---
 
-## 6. Medium priority (не блокують реліз)
+## 6. Medium priority — ✅ УСІ ВИПРАВЛЕНО
 
-- **`release.yml` `.sha256` для невірного імені.** Генерує `Win11-25H2-CalmMode-Release.zip.sha256`,
-  а `RELEASE.md` описує версійний zip. Узгодити після фіксу 5.1.
-- **`New-ReleaseArchive.ps1` кладе `.gitignore` у реліз.** Кінцевому користувачу він не потрібен — прибрати зі списку `$filesToInclude`.
-- **`RELEASE.md` має дубльовану нумерацію** (двічі пункт «4.»). Перенумерувати.
-- **`AUDIT.md` був порожній** — заповнено цим документом.
-- **`checksums.txt` — build-артефакт у `.gitignore`.** Це ок, але через 5.1 його формат залежить від того, хто збирав. Уніфікувати разом із 5.1.
+- **`release.yml` `.sha256` для невірного імені — ✅ виправлено.** Знято разом із 5.1: `release.yml`
+  тепер викликає `New-ReleaseArchive.ps1`, який генерує версійний `Win11-25H2-CalmMode-v<version>.zip.sha256`.
+- **`New-ReleaseArchive.ps1` кладе `.gitignore` у реліз — ✅ виправлено.** `.gitignore` прибрано зі списку
+  `$filesToInclude`. Архів перезібрано: тепер **7 файлів** (без `.gitignore`), хеші оновлено, `.zip.sha256` збігається з фактичним zip.
+- **`RELEASE.md` дубльована нумерація — ✅ виправлено.** Перенумеровано на 1–7; додано окремий крок «Verify the archive»
+  і узгоджено з версійним ім'ям zip + `.sha256` + `checksums.txt`.
+- **`AUDIT.md` був порожній — ✅ виправлено.** Заповнено цим документом.
+- **`checksums.txt` — формат залежав від механізму збірки — ✅ виправлено.** Знято разом із 5.1: тепер єдине
+  джерело збірки (`New-ReleaseArchive.ps1`) → однаковий формат локально й у CI.
 
 ---
 
@@ -123,7 +126,7 @@
 
 - **`CLAUDE.md`:** у блоці тестування й по тексту згадується старе ім'я `Win11-25H2-CalmMode-v2.1.ps1`;
   актуальне ім'я — стабільне `Win11-25H2-CalmMode.ps1`. Оновити приклади.
-- **`RELEASE.md`:** виправити подвійний пункт «4.»; після уніфікації 5.1 узгодити ім'я zip і команду генерації SHA256.
+- **`RELEASE.md`:** ✅ перенумеровано (1–7), додано крок верифікації архіву, узгоджено з версійним ім'ям zip.
 - **README:** наразі відповідає коду (параметри, дефолти, статуси, Appx limitations, rollback, Target Release pinning,
   Manual Update mode, Gaming-секція збігається з кодом). Після уніфікації релізу — звірити назву публікованого архіву.
 - **`CHANGELOG_UA.md` / `CHANGELOG_EN.md`:** актуальні для v2.2. Якщо фікс `New-ReleaseArchive.ps1` піде окремим релізом —
@@ -136,8 +139,8 @@
 
 - **`Win11-25H2-CalmMode.ps1`:** змін не потрібно. Синтаксис парситься без помилок; логіка Audit/Apply/Verify,
   backup, rollback, applicability (MinBuild/MinUBR/Editions) коректна; небезпечних патернів немає.
-- **`New-ReleaseArchive.ps1`:** уже виправлено (helper `Get-Sha256Hex` через .NET замість `Get-FileHash`).
-  Додатково (Medium): прибрати `.gitignore` зі списку файлів релізу.
+- **`New-ReleaseArchive.ps1`:** уже виправлено (helper `Get-Sha256Hex` через .NET замість `Get-FileHash`;
+  `.gitignore` прибрано зі списку файлів релізу — архів тепер 7 файлів).
 - **`Win11-25H2-CalmMode.Tests.ps1`:** мігрувати `Should Be` → `Should -Be` (див. 5.2). Тести систему не змінюють (dot-source лише функцій) — це добре.
 
 ---
@@ -171,10 +174,11 @@
 - [x] Виправити Pester-тести під версію Pester у CI (пін Pester 4.10.1)
 - [x] Закомітити фікси (working tree clean)
 - [x] Створити git-тег v2.2 (локально; push + GitHub Release — вручну)
+- [x] Прибрати .gitignore зі складу релізного архіву (тепер 7 файлів)
+- [x] Перенумерувати RELEASE.md (1–7)
 - [ ] `git push --tags` і створити GitHub Release (вручну, рішення maintainer-а)
-- [ ] Прибрати .gitignore зі складу релізного архіву (Medium, опційно)
-- [ ] Перевірити PSScriptAnalyzer (Error,Warning) у CI / на чистій машині
-- [ ] Оновити старі згадки імені файлу у CLAUDE.md; виправити нумерацію RELEASE.md (Medium/docs)
+- [ ] Перевірити PSScriptAnalyzer (Error,Warning) у CI / на чистій машині (Low)
+- [ ] Оновити старі згадки імені файлу у CLAUDE.md (Low/docs)
 ```
 
 ---
