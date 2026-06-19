@@ -1099,6 +1099,26 @@ function Invoke-AppCleanup {
     Invoke-ExeCleanupTarget -Name "OneDrive uninstall" -ExePaths @("$env:SystemRoot\System32\OneDriveSetup.exe", "$env:SystemRoot\SysWOW64\OneDriveSetup.exe") -VerifyExePath (Join-Path $env:LOCALAPPDATA "Microsoft\OneDrive\OneDrive.exe") -UninstallArgs "/uninstall" -Enabled $RemoveOneDrive
 }
 
+function Test-PendingReboot {
+    # Read-only check for a reboot that Windows already has queued. Many policies only
+    # fully take effect after a restart, so a pending reboot is worth surfacing before
+    # the user trusts a Verify run. Reading these HKLM keys does not require admin.
+    $reasons = New-Object System.Collections.Generic.List[string]
+
+    if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") {
+        $reasons.Add("Component Based Servicing")
+    }
+    if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") {
+        $reasons.Add("Windows Update")
+    }
+    $pfro = Get-RegValueSafe "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "PendingFileRenameOperations"
+    if ($pfro.Exists -and @($pfro.Value | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+        $reasons.Add("Pending file rename operations")
+    }
+
+    return [pscustomobject]@{ Pending = ($reasons.Count -gt 0); Reasons = @($reasons) }
+}
+
 function Add-PreflightResults {
     Write-Section "Preflight"
 
@@ -1145,6 +1165,19 @@ function Add-PreflightResults {
     }
     Add-Result "Preflight" "PowerShell bitness" $bitnessStatus ([Environment]::Is64BitProcess) $true "" "" "Official" "Detected" $bitnessMsg
     Write-ResultLine $bitnessStatus "Preflight" "PowerShell bitness" ([Environment]::Is64BitProcess) $true $bitnessMsg
+
+    # A reboot that is already pending means some earlier changes have not fully landed.
+    # Surface it so the user restarts before trusting Verify. Read-only, never auto-reboots.
+    $reboot = Test-PendingReboot
+    $rebootStatus = if ($reboot.Pending) { "Warning" } else { "Compliant" }
+    $rebootCurrent = if ($reboot.Pending) { ($reboot.Reasons -join "; ") } else { "None" }
+    $rebootMsg = if ($reboot.Pending) {
+        "A reboot is already pending ($($reboot.Reasons -join '; ')). Some policies only fully take effect after restart - reboot before trusting Verify."
+    } else {
+        "No pending reboot detected."
+    }
+    Add-Result "Preflight" "Pending reboot" $rebootStatus $rebootCurrent "None" "" "" "Official" "Detected" $rebootMsg
+    Write-ResultLine $rebootStatus "Preflight" "Pending reboot" $rebootCurrent "None" $rebootMsg
 }
 
 function Initialize-RegistrySettings {
@@ -1434,6 +1467,31 @@ function Invoke-GpUpdateAndExplorer {
     }
 }
 
+function Get-ResultSummary {
+    # Ordered status -> count map for the current results. Single source for the
+    # end-of-run console summary (and mirrors the per-status summary the GUI shows).
+    $counts = [ordered]@{}
+    foreach ($r in $script:Results) {
+        if (-not $counts.Contains($r.Status)) { $counts[$r.Status] = 0 }
+        $counts[$r.Status]++
+    }
+    return $counts
+}
+
+function Write-RunSummary {
+    Write-Section "Summary"
+    $counts = Get-ResultSummary
+    Write-Host ("Total checks: {0}" -f $script:Results.Count) -ForegroundColor Cyan
+    foreach ($key in $counts.Keys) {
+        Write-Host ("  {0,-22} {1}" -f $key, $counts[$key]) -ForegroundColor (Get-ConsoleStatusColor $key)
+    }
+    if ($Mode -eq "Audit") {
+        $wouldCount = @($script:Results | Where-Object { $_.Status -eq 'WouldChange' -or $_.Status -eq 'WouldRemove' }).Count
+        $verb = if ($WhatIfPreference) { "would change (WhatIf)" } else { "would change on Apply" }
+        Write-Host ("Items that {0}: {1}" -f $verb, $wouldCount) -ForegroundColor Yellow
+    }
+}
+
 function Write-Reports {
     if ($script:NoReport) {
         Write-Host "Reports skipped by -NoReport (console output only)." -ForegroundColor DarkYellow
@@ -1467,6 +1525,22 @@ function Write-Reports {
 
     $summary = $script:Results | Group-Object Status | Sort-Object Name | Select-Object Name, Count
     $summaryHtml = $summary | ConvertTo-Html -Fragment -PreContent "<h2>Status summary</h2>"
+
+    # "Needs attention" at the top: everything that is not already compliant/informational.
+    $attentionStatuses = @("Warning", "VerifyFail", "Error", "RequiresVerification",
+        "MaybeIgnoredOnEdition", "WouldChange", "WouldRemove", "UnsupportedBuild")
+    $attentionRows = $script:Results | Where-Object { $attentionStatuses -contains $_.Status } | Sort-Object Category, Item
+    if ($attentionRows) {
+        $attentionHtml = $attentionRows |
+            Select-Object Category, Item, Status, CurrentValue, DesiredValue, Message |
+            ConvertTo-Html -Fragment -PreContent "<h2>Needs attention ($(@($attentionRows).Count))</h2>"
+    } else {
+        $attentionHtml = "<h2>Needs attention</h2><p class='ok'>Nothing needs attention - all checks are compliant or informational.</p>"
+    }
+
+    $confidence = $script:Results | Group-Object Confidence | Sort-Object Name | Select-Object Name, Count
+    $confidenceHtml = $confidence | ConvertTo-Html -Fragment -PreContent "<h2>By confidence</h2>"
+
     $resultsHtml = $script:Results | Sort-Object Category, Item | ConvertTo-Html -Fragment -PreContent "<h2>Detailed results</h2>"
 
     $css = @"
@@ -1479,6 +1553,7 @@ th, td { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; }
 th { background: #f3f3f3; text-align: left; }
 tr:nth-child(even) { background: #fafafa; }
 .note { background: #fff7d6; padding: 10px; border: 1px solid #f0d36a; border-radius: 6px; }
+.ok { color: #137333; font-weight: 600; }
 </style>
 "@
 
@@ -1509,7 +1584,9 @@ Report folder: <b>$encReportDir</b>
 <div class="note">
 <b>Important:</b> Registry verification proves that the value was written/read successfully. It cannot always prove that Windows UI fully honors a policy, especially for edition-limited or build-dependent policies. Such entries are marked as BestEffort, DeprecatedOrLegacy, UISetting, or MaybeIgnoredOnEdition.
 </div>
+$attentionHtml
 $summaryHtml
+$confidenceHtml
 $resultsHtml
 </body>
 </html>
@@ -1591,6 +1668,7 @@ try {
     Invoke-AppCleanup
     Invoke-GpUpdateAndExplorer
     Write-Reports
+    Write-RunSummary
 
     Write-Host ""
     Write-Host "Done." -ForegroundColor Green

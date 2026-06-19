@@ -4,6 +4,19 @@
 
 Проєкт використовує просту схему версій: `vMAJOR.MINOR`.
 
+## [v2.5] - 2026-06-20
+
+### Додано
+
+- **Підсумок наприкінці прогону.** Після кожного запуску (Audit/Apply/Verify, навіть з `-NoReport`) друкується блок «Summary»: загальна кількість перевірок і лічильники по статусах (`Compliant`, `WouldChange`, `Skipped`, `Warning`, …). В Audit додатково — скільки пунктів «would change on Apply» (з урахуванням `-WhatIf`).
+- **Виявлення pending reboot** (read-only preflight). Перевіряє `Component Based Servicing\RebootPending`, `WindowsUpdate\Auto Update\RebootRequired` і `PendingFileRenameOperations`; якщо перезавантаження вже заплановане — показує `Warning` у звіті. Нічого не перезавантажує автоматично — багато політик «доїжджають» лише після reboot.
+- **Кращий HTML-звіт.** Угорі додано секцію **«Needs attention»** (Warning / VerifyFail / Error / RequiresVerification / MaybeIgnoredOnEdition / WouldChange / WouldRemove / UnsupportedBuild) і зведення **«By confidence»**.
+- Тести на нові helper-функції `Get-ResultSummary` і `Test-PendingReboot` (усього 38).
+
+### Змінено
+
+- HTML-звіт переупорядковано: «Needs attention» → «Status summary» → «By confidence» → «Detailed results».
+
 ## [v2.4] - 2026-06-19
 
 ### Додано

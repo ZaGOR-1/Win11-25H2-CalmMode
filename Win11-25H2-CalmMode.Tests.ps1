@@ -168,6 +168,27 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
             ($known | Sort-Object -Unique).Count | Should -Be $known.Count
         }
     }
+
+    Context "Get-ResultSummary" {
+        It "counts results grouped by status" {
+            $script:Results = New-Object 'System.Collections.Generic.List[object]'
+            $script:Results.Add([pscustomobject]@{ Status = "Compliant" })
+            $script:Results.Add([pscustomobject]@{ Status = "Compliant" })
+            $script:Results.Add([pscustomobject]@{ Status = "WouldChange" })
+            $summary = Get-ResultSummary
+            $summary["Compliant"] | Should -Be 2
+            $summary["WouldChange"] | Should -Be 1
+        }
+    }
+
+    Context "Test-PendingReboot" {
+        It "returns a Pending boolean and a Reasons collection" {
+            $r = Test-PendingReboot
+            ($r.Pending -is [bool]) | Should -Be $true
+            ($r.PSObject.Properties.Name -contains "Reasons") | Should -Be $true
+            if (-not $r.Pending) { @($r.Reasons).Count | Should -Be 0 }
+        }
+    }
 }
 
 # ------------------------------------------------------------------------------

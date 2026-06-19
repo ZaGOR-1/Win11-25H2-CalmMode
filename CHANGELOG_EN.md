@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [v2.5] - 2026-06-20
+
+### Added
+
+- **End-of-run summary.** After every run (Audit/Apply/Verify, even with `-NoReport`) a "Summary" block prints the total number of checks and per-status counts (`Compliant`, `WouldChange`, `Skipped`, `Warning`, …). In Audit it also reports how many items "would change on Apply" (respecting `-WhatIf`).
+- **Pending reboot detection** (read-only preflight). Checks `Component Based Servicing\RebootPending`, `WindowsUpdate\Auto Update\RebootRequired`, and `PendingFileRenameOperations`; if a restart is already queued it is shown as `Warning`. Nothing is rebooted automatically — many policies only fully take effect after a restart.
+- **Improved HTML report.** A **"Needs attention"** section at the top (Warning / VerifyFail / Error / RequiresVerification / MaybeIgnoredOnEdition / WouldChange / WouldRemove / UnsupportedBuild) and a **"By confidence"** summary.
+- Tests for the new helpers `Get-ResultSummary` and `Test-PendingReboot` (38 total).
+
+### Changed
+
+- HTML report reordered: "Needs attention" → "Status summary" → "By confidence" → "Detailed results".
+
 ## [v2.4] - 2026-06-19
 
 ### Added
