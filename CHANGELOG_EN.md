@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [v2.4] - 2026-06-19
+
+### Added
+
+- **GUI: results shown in-window.** After **Run Audit** (and **Apply**) the GUI reads the generated JSON report and shows it in a grid with a "Needs attention" filter (default; a *Show all* toggle reveals everything) plus a per-status summary. Audit no longer opens a separate console.
+- **GUI: Save config… / Load config….** Save the current checkbox selection to JSON and load it later (the same format as `-ConfigPath`).
+- **GUI: basic HiDPI support** (`SetProcessDPIAware` + `AutoScaleMode = Dpi`) so text and controls are not blurry on scaled displays.
+- `Get-KnownStatuses` — a single canonical list of report statuses; `Add-Result` now writes to the verbose stream when it sees an unknown status (typo guard). The 40+ call sites are intentionally not machine-rewritten to constants: the same literals mean different things across the Status/Confidence/Support fields, so a blind replace would be unsafe.
+- Pester tests for the config mechanism: `-ExportCatalog` structure, `-ConfigPath` filtering (disabled block → 0 results, disabled tweak → `Skipped`), that Audit emits only known statuses, the exit-1 path on a missing config, and the GUI `-SelfTest` (config formation + round-trip). 36 tests total.
+
+### Changed
+
+- **GUI: temp config cleanup.** Temporary `Win11-CalmMode-GUI-config-*.json` files are removed after a run (the engine is now launched with `-Wait`), and leftovers from previous crashed runs are cleaned up on GUI start.
+- GUI: `-SelfTest` extended — besides building the tree it now verifies config formation and a load round-trip.
+
 ## [v2.3] - 2026-06-19
 
 ### Added

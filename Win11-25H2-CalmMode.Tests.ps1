@@ -155,4 +155,114 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
             $res.CanApply | Should -Be $true
         }
     }
+
+    Context "Get-KnownStatuses" {
+        It "contains the core report statuses" {
+            $known = Get-KnownStatuses
+            foreach ($s in "Compliant", "WouldChange", "WouldRemove", "Skipped", "VerifyFail", "Error", "Warning") {
+                $known | Should -Contain $s
+            }
+        }
+        It "has no duplicate entries" {
+            $known = Get-KnownStatuses
+            ($known | Sort-Object -Unique).Count | Should -Be $known.Count
+        }
+    }
+}
+
+# ------------------------------------------------------------------------------
+# Integration tests for the config mechanism (-ExportCatalog / -ConfigPath) and
+# the GUI self-test. These spawn the engine via Windows PowerShell (powershell.exe)
+# because the engine requires the Desktop edition. All runs are read-only (Audit).
+# ------------------------------------------------------------------------------
+Describe "Config mechanism (integration)" {
+    BeforeAll {
+        $script:engine = Join-Path $PSScriptRoot "Win11-25H2-CalmMode.ps1"
+        $sys32 = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+        $script:psExe = if (Test-Path $sys32) { $sys32 } else { "powershell.exe" }
+        $script:knownStatuses = Get-KnownStatuses
+
+        $raw = & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -ExportCatalog 2>$null
+        $text = ($raw -join "`n")
+        $s = $text.IndexOf("{"); $e = $text.LastIndexOf("}")
+        $script:catalog = $text.Substring($s, $e - $s + 1) | ConvertFrom-Json
+
+        $script:tempReports = Join-Path $env:TEMP ("calm-tests-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $script:tempReports -Force | Out-Null
+    }
+
+    AfterAll {
+        if ($script:tempReports -and (Test-Path $script:tempReports)) {
+            Remove-Item -Recurse -Force $script:tempReports -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Run an Audit with a given config object and return the parsed JSON results.
+    function Invoke-AuditWithConfig {
+        param($ConfigObject)
+        $cfg = Join-Path $env:TEMP ("calm-cfg-" + [Guid]::NewGuid().ToString("N") + ".json")
+        ($ConfigObject | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $cfg -Encoding UTF8
+        & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -ConfigPath $cfg -ReportPath $script:tempReports *> $null
+        $dir = Get-ChildItem -LiteralPath $script:tempReports -Directory -Filter "Win11-25H2-CalmMode-v*-Audit-*" |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        $json = Get-ChildItem -LiteralPath $dir.FullName -Filter "*-results.json" | Select-Object -First 1
+        $results = Get-Content -LiteralPath $json.FullName -Raw | ConvertFrom-Json
+        Remove-Item -LiteralPath $cfg -Force -ErrorAction SilentlyContinue
+        return , @($results)
+    }
+
+    Context "-ExportCatalog" {
+        It "returns at least one block and one tweak" {
+            $script:catalog.Blocks.Count | Should -BeGreaterThan 0
+            $script:catalog.Tweaks.Count | Should -BeGreaterThan 0
+        }
+        It "every tweak exposes the contract fields" {
+            $t = $script:catalog.Tweaks[0]
+            foreach ($p in "Key", "BlockKey", "Category", "Name", "Path", "Type", "Value", "Description", "Confidence", "MinBuild", "Editions") {
+                ($t.PSObject.Properties.Name -contains $p) | Should -Be $true
+            }
+        }
+        It "reports a non-empty script version" {
+            [string]::IsNullOrWhiteSpace($script:catalog.ScriptVersion) | Should -Be $false
+        }
+    }
+
+    Context "-ConfigPath selection" {
+        It "disabling a block removes all of its results" {
+            $results = Invoke-AuditWithConfig @{ blocks = @{ Gaming = $false }; disabledTweaks = @() }
+            (@($results | Where-Object { $_.Category -eq "Gaming" })).Count | Should -Be 0
+        }
+
+        It "disabling a single tweak reports it as Skipped" {
+            $enabledKeys = ($script:catalog.Blocks | Where-Object { $_.Enabled }).Key
+            $tweak = $script:catalog.Tweaks | Where-Object { $enabledKeys -contains $_.BlockKey } | Select-Object -First 1
+            $results = Invoke-AuditWithConfig @{ blocks = @{}; disabledTweaks = @($tweak.Key) }
+            $row = $results | Where-Object { ("$($_.Path)\$($_.Name)") -eq $tweak.Key } | Select-Object -First 1
+            $row | Should -Not -BeNullOrEmpty
+            $row.Status | Should -Be "Skipped"
+        }
+
+        It "emits only known statuses" {
+            $results = Invoke-AuditWithConfig @{ blocks = @{}; disabledTweaks = @() }
+            $bad = $results | Where-Object { $script:knownStatuses -notcontains $_.Status }
+            (@($bad)).Count | Should -Be 0
+        }
+    }
+
+    Context "config errors" {
+        It "exits with code 1 on a missing config path" {
+            & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -ConfigPath "Z:\does\not\exist.json" -NoReport *> $null
+            $LASTEXITCODE | Should -Be 1
+        }
+    }
+}
+
+Describe "GUI self-test (integration)" {
+    It "builds the tree and round-trips the config" {
+        $gui = Join-Path $PSScriptRoot "Win11-25H2-CalmMode-GUI.ps1"
+        $sys32 = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+        $psExe = if (Test-Path $sys32) { $sys32 } else { "powershell.exe" }
+        $out = & $psExe -NoProfile -ExecutionPolicy Bypass -File $gui -SelfTest 2>&1
+        ($out -join "`n") | Should -Match "SELFTEST OK"
+    }
 }

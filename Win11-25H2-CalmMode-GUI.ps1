@@ -37,9 +37,22 @@ if ([string]::IsNullOrWhiteSpace($EnginePath)) {
     $EnginePath = Join-Path $scriptDir "Win11-25H2-CalmMode.ps1"
 }
 
+# Basic HiDPI: make the process system-DPI aware so the form and text are not
+# bitmap-stretched (blurry) on scaled displays. Best-effort; ignore if unavailable.
+try {
+    if (-not ([System.Management.Automation.PSTypeName]'NativeDpi').Type) {
+        Add-Type -Namespace Native -Name Dpi -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool SetProcessDPIAware();
+'@
+    }
+    [void][Native.Dpi]::SetProcessDPIAware()
+} catch { Write-Verbose "DPI awareness not set: $($_.Exception.Message)" }
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
+[System.Windows.Forms.Application]::SetCompatibleTextRenderingDefault($false)
 
 if (-not (Test-Path -LiteralPath $EnginePath)) {
     [System.Windows.Forms.MessageBox]::Show(
@@ -62,6 +75,13 @@ function Get-PowerShellExe {
 }
 
 $script:PowerShellExe = Get-PowerShellExe
+
+# Best-effort cleanup of any temp config files left behind by previous runs that
+# crashed before they could delete their own. Current runs clean up after -Wait.
+try {
+    Get-ChildItem -Path $env:TEMP -Filter "Win11-CalmMode-GUI-config-*.json" -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+} catch { Write-Verbose "Temp cleanup skipped: $($_.Exception.Message)" }
 
 # ------------------------------------------------------------
 # Load the catalog from the engine (-ExportCatalog prints JSON)
@@ -122,6 +142,8 @@ $form.Text = "Win11 25H2 Calm Mode v$($catalog.ScriptVersion) - configuration"
 $form.Size = New-Object System.Drawing.Size(820, 680)
 $form.StartPosition = "CenterScreen"
 $form.MinimumSize = New-Object System.Drawing.Size(640, 480)
+$form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+$form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
 
 # Header with detected environment.
 $header = New-Object System.Windows.Forms.Label
@@ -225,13 +247,15 @@ function Get-ActionButton {
     return $b
 }
 
-$btnSelectAll = Get-ActionButton -Text "Select all" -X 10 -Width 90
-$btnSelectNone = Get-ActionButton -Text "Select none" -X 106 -Width 90
-$btnAudit = Get-ActionButton -Text "Run Audit (safe)" -X 360 -Width 150
-$btnApply = Get-ActionButton -Text "Apply..." -X 516 -Width 120
+$btnSelectAll = Get-ActionButton -Text "Select all" -X 10 -Width 84
+$btnSelectNone = Get-ActionButton -Text "Select none" -X 98 -Width 84
+$btnSave = Get-ActionButton -Text "Save config..." -X 186 -Width 96
+$btnLoad = Get-ActionButton -Text "Load config..." -X 286 -Width 96
+$btnAudit = Get-ActionButton -Text "Run Audit (safe)" -X 398 -Width 132
+$btnApply = Get-ActionButton -Text "Apply..." -X 534 -Width 104
 $btnClose = Get-ActionButton -Text "Close" -X 642 -Width 90
 
-$panel.Controls.AddRange(@($btnSelectAll, $btnSelectNone, $btnAudit, $btnApply, $btnClose))
+$panel.Controls.AddRange(@($btnSelectAll, $btnSelectNone, $btnSave, $btnLoad, $btnAudit, $btnApply, $btnClose))
 
 # Status line.
 $status = New-Object System.Windows.Forms.Label
@@ -245,6 +269,40 @@ $btnSelectAll.Add_Click({
 })
 $btnSelectNone.Add_Click({
     foreach ($n in $tree.Nodes) { $n.Checked = $false }
+})
+
+$btnSave.Add_Click({
+    $dlg = New-Object System.Windows.Forms.SaveFileDialog
+    $dlg.Filter = "JSON config (*.json)|*.json|All files (*.*)|*.*"
+    $dlg.FileName = "Win11-CalmMode-config.json"
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        try {
+            $json = Get-SelectionConfig | ConvertTo-Json -Depth 5
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($dlg.FileName, $json, $utf8NoBom)
+            $status.Text = "Saved config to $($dlg.FileName)"
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Could not save config.`n`n$($_.Exception.Message)",
+                "Win11 25H2 Calm Mode", "OK", "Error") | Out-Null
+        }
+    }
+})
+
+$btnLoad.Add_Click({
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Filter = "JSON config (*.json)|*.json|All files (*.*)|*.*"
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        try {
+            $cfg = Get-Content -LiteralPath $dlg.FileName -Raw -ErrorAction Stop | ConvertFrom-Json
+            Set-TreeFromConfig -Config $cfg
+            $status.Text = "Loaded config from $($dlg.FileName)"
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Could not load config.`n`n$($_.Exception.Message)",
+                "Win11 25H2 Calm Mode", "OK", "Error") | Out-Null
+        }
+    }
 })
 
 # Build the config object from the current checkbox state.
@@ -270,6 +328,36 @@ function Get-SelectionConfig {
     }
 }
 
+# Apply a parsed config object (same schema as Get-SelectionConfig) to the tree.
+# Only mutates in-memory checkbox state, so ShouldProcess does not apply here.
+function Set-TreeFromConfig {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param($Config)
+    $disabled = @()
+    if ($Config.PSObject.Properties.Name -contains "disabledTweaks" -and $Config.disabledTweaks) {
+        $disabled = @($Config.disabledTweaks)
+    }
+    $blockProps = if ($Config.PSObject.Properties.Name -contains "blocks" -and $Config.blocks) { $Config.blocks } else { $null }
+
+    # Suppress the block->children cascade so we can set each child explicitly.
+    $script:Suppress = $true
+    try {
+        foreach ($blockNode in $tree.Nodes) {
+            $tag = $blockNode.Tag
+            if ($null -eq $tag -or $tag.Kind -ne "block") { continue }
+            if ($blockProps -and ($blockProps.PSObject.Properties.Name -contains $tag.Key)) {
+                $blockNode.Checked = [bool]$blockProps.$($tag.Key)
+            }
+            foreach ($child in $blockNode.Nodes) {
+                if ($null -eq $child.Tag -or $child.Tag.Kind -ne "tweak") { continue }
+                $child.Checked = ($blockNode.Checked -and ($disabled -notcontains $child.Tag.Key))
+            }
+        }
+    } finally {
+        $script:Suppress = $false
+    }
+}
+
 # Write the selection config to a temp file and return its path.
 function Get-TempConfigPath {
     $cfg = Get-SelectionConfig
@@ -280,31 +368,146 @@ function Get-TempConfigPath {
     return $path
 }
 
-# Run the engine in a given mode with the current selection. Apply runs elevated.
+# Locate the JSON results file the engine just wrote under a report base folder.
+function Find-LatestResultsJson {
+    param([string]$Base, [string]$Mode)
+    if ([string]::IsNullOrWhiteSpace($Base) -or -not (Test-Path -LiteralPath $Base)) { return $null }
+    $dir = Get-ChildItem -LiteralPath $Base -Directory -Filter "Win11-25H2-CalmMode-v*-$Mode-*" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $dir) { return $null }
+    $json = Get-ChildItem -LiteralPath $dir.FullName -Filter "*-results.json" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($json) { return $json.FullName }
+    return $null
+}
+
+# Show the engine's results in a grid. Defaults to a "Needs attention" view.
+function Show-ResultsDialog {
+    param([object[]]$Results, [string]$Mode)
+
+    $attention = @("WouldChange", "WouldRemove", "Warning", "VerifyFail", "Error",
+        "RequiresVerification", "MaybeIgnoredOnEdition", "UnsupportedBuild")
+
+    $rf = New-Object System.Windows.Forms.Form
+    $rf.Text = "$Mode results"
+    $rf.Size = New-Object System.Drawing.Size(900, 560)
+    $rf.StartPosition = "CenterParent"
+    $rf.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+
+    $grid = New-Object System.Windows.Forms.DataGridView
+    $grid.Dock = "Fill"
+    $grid.ReadOnly = $true
+    $grid.AllowUserToAddRows = $false
+    $grid.AllowUserToDeleteRows = $false
+    $grid.RowHeadersVisible = $false
+    $grid.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::Fill
+    $grid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
+    foreach ($c in @("Category", "Item", "Status", "Current", "Desired", "Message")) {
+        [void]$grid.Columns.Add($c, $c)
+    }
+    $grid.Columns["Item"].FillWeight = 200
+    $grid.Columns["Message"].FillWeight = 260
+
+    $top = New-Object System.Windows.Forms.Panel
+    $top.Dock = "Top"
+    $top.Height = 34
+    $chkAll = New-Object System.Windows.Forms.CheckBox
+    $chkAll.Text = "Show all (including compliant)"
+    $chkAll.Location = New-Object System.Drawing.Point(10, 8)
+    $chkAll.AutoSize = $true
+    $summary = New-Object System.Windows.Forms.Label
+    $summary.Location = New-Object System.Drawing.Point(260, 10)
+    $summary.AutoSize = $true
+    $counts = $Results | Group-Object Status | Sort-Object Name
+    $summary.Text = "Total: $($Results.Count)  |  " + (($counts | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join "   ")
+    $top.Controls.AddRange(@($chkAll, $summary))
+
+    $populate = {
+        $grid.Rows.Clear()
+        foreach ($r in $Results) {
+            if (-not $chkAll.Checked -and ($attention -notcontains $r.Status)) { continue }
+            $i = $grid.Rows.Add($r.Category, $r.Item, $r.Status, $r.CurrentValue, $r.DesiredValue, $r.Message)
+            $fore = switch -Wildcard ($r.Status) {
+                "Error"       { "Red" }
+                "VerifyFail"  { "Red" }
+                "Warning"     { "DarkOrange" }
+                "WouldChange" { "DarkOrange" }
+                "WouldRemove" { "DarkOrange" }
+                "Unsupported*" { "Firebrick" }
+                default       { "Black" }
+            }
+            $grid.Rows[$i].Cells["Status"].Style.ForeColor = [System.Drawing.Color]::FromName($fore)
+        }
+        if ($grid.Rows.Count -eq 0) {
+            $status2 = if ($chkAll.Checked) { "no results" } else { "nothing needs attention" }
+            $rf.Text = "$Mode results - $status2"
+        }
+    }
+    $chkAll.Add_CheckedChanged($populate)
+    & $populate
+
+    $rf.Controls.Add($grid)
+    $rf.Controls.Add($top)
+    $grid.BringToFront()
+    [void]$rf.ShowDialog()
+    $rf.Dispose()
+}
+
+# Run the engine in a given mode with the current selection, then show the results
+# in-window. Audit runs hidden (read-only, throwaway report); Apply runs elevated
+# and writes its report + rollback.reg to the Desktop (preserved).
 function Invoke-Engine {
     param([ValidateSet("Audit", "Apply")][string]$Mode)
 
     $cfgPath = Get-TempConfigPath
+    $auditTempBase = $null
+    if ($Mode -eq "Audit") {
+        $auditTempBase = Join-Path $env:TEMP ("Win11-CalmMode-GUI-audit-" + [Guid]::NewGuid().ToString("N"))
+        [void](New-Item -ItemType Directory -Path $auditTempBase -Force)
+        $reportBase = $auditTempBase
+    } else {
+        $reportBase = [Environment]::GetFolderPath("Desktop")
+    }
+
     $argList = @(
         "-NoProfile", "-ExecutionPolicy", "Bypass",
         "-File", "`"$EnginePath`"",
         "-Mode", $Mode,
-        "-ConfigPath", "`"$cfgPath`""
+        "-ConfigPath", "`"$cfgPath`"",
+        "-ReportPath", "`"$reportBase`""
     )
 
     try {
+        $form.Enabled = $false
         if ($Mode -eq "Apply") {
-            # Apply needs Administrator: relaunch the engine elevated in its own window.
-            $status.Text = "Launching elevated Apply... approve the UAC prompt."
-            Start-Process -FilePath $script:PowerShellExe -ArgumentList $argList -Verb RunAs | Out-Null
+            $status.Text = "Launching elevated Apply... approve the UAC prompt, then wait."
+            $status.Refresh()
+            $proc = Start-Process -FilePath $script:PowerShellExe -ArgumentList $argList -Verb RunAs -Wait -PassThru
         } else {
-            $status.Text = "Running Audit... a console window will show the report."
-            Start-Process -FilePath $script:PowerShellExe -ArgumentList $argList | Out-Null
+            $status.Text = "Running Audit (read-only)... please wait."
+            $status.Refresh()
+            $proc = Start-Process -FilePath $script:PowerShellExe -ArgumentList $argList -WindowStyle Hidden -Wait -PassThru
+        }
+
+        $jsonPath = Find-LatestResultsJson -Base $reportBase -Mode $Mode
+        if ($jsonPath) {
+            $results = @(Get-Content -LiteralPath $jsonPath -Raw -ErrorAction Stop | ConvertFrom-Json)
+            $status.Text = "$Mode complete: $($results.Count) checks (engine exit $($proc.ExitCode)). See results window."
+            Show-ResultsDialog -Results $results -Mode $Mode
+        } else {
+            $status.Text = "$Mode finished (engine exit $($proc.ExitCode)) but no results file was found."
         }
     } catch {
         [System.Windows.Forms.MessageBox]::Show(
-            "Could not start the engine.`n`n$($_.Exception.Message)",
+            "Could not run the engine.`n`n$($_.Exception.Message)",
             "Win11 25H2 Calm Mode", "OK", "Error") | Out-Null
+        $status.Text = "Ready. Audit is read-only and changes nothing."
+    } finally {
+        $form.Enabled = $true
+        Remove-Item -LiteralPath $cfgPath -Force -ErrorAction SilentlyContinue
+        if ($auditTempBase -and (Test-Path -LiteralPath $auditTempBase)) {
+            Remove-Item -LiteralPath $auditTempBase -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -327,13 +530,57 @@ $btnApply.Add_Click({
 $btnClose.Add_Click({ $form.Close() })
 
 if ($SelfTest) {
-    # Headless check: confirm the tree built with all blocks and tweaks, then exit.
+    # Headless check: tree built, and config formation / round-trip work. No UI shown.
+    $fail = New-Object System.Collections.ArrayList
     $tweakNodeCount = 0
     foreach ($n in $tree.Nodes) { $tweakNodeCount += $n.Nodes.Count }
-    Write-Output ("SELFTEST OK: blockNodes={0} tweakNodes={1} sampleConfig={2}" -f `
-        $tree.Nodes.Count, $tweakNodeCount, ((Get-SelectionConfig | ConvertTo-Json -Depth 5 -Compress).Length))
+
+    $cfg0 = Get-SelectionConfig
+    if ($cfg0.blocks.Count -ne $tree.Nodes.Count) {
+        [void]$fail.Add("block count $($cfg0.blocks.Count) != node count $($tree.Nodes.Count)")
+    }
+
+    # Pick a block that has tweaks, to exercise the tweak/block disable round trips.
+    $blockKey = $null; $tweakKey = $null
+    foreach ($n in $tree.Nodes) {
+        if ($null -ne $n.Tag -and $n.Tag.Kind -eq "block" -and $n.Nodes.Count -gt 0) {
+            $blockKey = $n.Tag.Key; $tweakKey = $n.Nodes[0].Tag.Key; break
+        }
+    }
+
+    if ($null -eq $blockKey) {
+        [void]$fail.Add("no block with tweaks found")
+    } else {
+        $allBlocks = @{}
+        foreach ($n in $tree.Nodes) { $allBlocks[$n.Tag.Key] = $true }
+
+        # Round trip 1: block ON, its first tweak disabled (via the real JSON path).
+        $rt1 = (@{ blocks = $allBlocks; disabledTweaks = @($tweakKey) } | ConvertTo-Json -Depth 5) | ConvertFrom-Json
+        Set-TreeFromConfig -Config $rt1
+        if ((Get-SelectionConfig).disabledTweaks -notcontains $tweakKey) {
+            [void]$fail.Add("tweak-disable round trip failed for $tweakKey")
+        }
+
+        # Round trip 2: whole block disabled.
+        $allBlocks2 = @{}
+        foreach ($n in $tree.Nodes) { $allBlocks2[$n.Tag.Key] = $true }
+        $allBlocks2[$blockKey] = $false
+        $rt2 = (@{ blocks = $allBlocks2; disabledTweaks = @() } | ConvertTo-Json -Depth 5) | ConvertFrom-Json
+        Set-TreeFromConfig -Config $rt2
+        if ((Get-SelectionConfig).blocks[$blockKey] -ne $false) {
+            [void]$fail.Add("block-disable round trip failed for $blockKey")
+        }
+    }
+
     $form.Dispose()
-    return
+    if ($fail.Count -eq 0) {
+        Write-Output ("SELFTEST OK: blockNodes={0} tweakNodes={1} blocksInConfig={2}" -f `
+            $tree.Nodes.Count, $tweakNodeCount, $cfg0.blocks.Count)
+        return
+    } else {
+        Write-Output ("SELFTEST FAIL: " + ($fail -join "; "))
+        exit 1
+    }
 }
 
 [void]$form.ShowDialog()

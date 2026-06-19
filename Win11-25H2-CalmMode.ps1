@@ -309,6 +309,26 @@ function Write-Section {
     Write-Host "============================================================" -ForegroundColor DarkGray
 }
 
+function Get-KnownStatuses {
+    # Single source of truth for the report Status field. Used by Add-Result to
+    # catch typos and by the test suite to assert the engine emits only valid
+    # statuses. NOTE: these are the values of the Status field only - some look
+    # alike to Confidence/Support values (e.g. BestEffort, UISetting) which is why
+    # the 40+ Add-Result call sites are intentionally NOT machine-rewritten to
+    # reference constants: the same literal means different things per field, so a
+    # blind replace would be unsafe. This list is the documented status vocabulary.
+    return @(
+        "Compliant", "AlreadyConfigured", "Changed", "VerifyOK",
+        "WouldChange", "WouldRemove",
+        "Skipped",
+        "VerifyFail", "Error",
+        "Warning",
+        "RequiresVerification", "MaybeIgnoredOnEdition",
+        "UnsupportedBuild", "DeprecatedOrLegacy",
+        "BestEffort", "UISetting"
+    )
+}
+
 function Add-Result {
     param(
         [string]$Category,
@@ -322,6 +342,12 @@ function Add-Result {
         [string]$Support,
         [string]$Message
     )
+
+    # Typo guard: a misspelled status would silently break report colouring and the
+    # result-based exit code. Surface it on the verbose stream without breaking the run.
+    if ((Get-KnownStatuses) -notcontains $Status) {
+        Write-Verbose "Add-Result: unrecognized Status '$Status' for $Category :: $Item"
+    }
 
     $script:Results.Add([pscustomobject]@{
         Time         = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
