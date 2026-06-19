@@ -67,6 +67,17 @@ param(
     # Creates no report folder and changes nothing. Used by the GUI to build its checkboxes.
     [switch]$ExportCatalog,
 
+    # Quick CLI alternative to -ConfigPath for whole-block selection (block keys are the
+    # keys of $script:BlockToggleMap, e.g. WindowsAI, Widgets, Gaming). -Skip turns the
+    # listed blocks OFF; -Only turns every block OFF except the listed ones. They cannot
+    # be combined, and are applied after -ConfigPath so they refine a loaded config.
+    [string[]]$Skip = @(),
+    [string[]]$Only = @(),
+
+    # After a successful Apply, immediately run a Verify pass and append its results to
+    # the same report, so you can confirm the values actually landed. Ignored unless Apply.
+    [switch]$ThenVerify,
+
     [switch]$SkipRestorePoint,
     [switch]$NoAppCleanup,
     [switch]$NoRestartExplorer
@@ -179,6 +190,36 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
                 [void]$script:DisabledTweaks.Add([string]$tweakKey)
             }
         }
+    }
+}
+
+# ============================================================
+# CLI BLOCK SELECTION (-Skip / -Only)
+# ============================================================
+# Quick whole-block selection without a config file. Applied after -ConfigPath so they
+# refine a loaded config. Block keys are validated against $script:BlockToggleMap.
+if ($Skip.Count -gt 0 -and $Only.Count -gt 0) {
+    Write-Host "ERROR: -Skip and -Only cannot be combined. Use one or the other." -ForegroundColor Red
+    exit 1
+}
+
+$invalidBlockKeys = @(($Skip + $Only) | Where-Object { -not $script:BlockToggleMap.Contains($_) })
+if ($invalidBlockKeys.Count -gt 0) {
+    Write-Host "ERROR: Unknown block key(s): $($invalidBlockKeys -join ', ')." -ForegroundColor Red
+    Write-Host "Valid keys: $(@($script:BlockToggleMap.Keys) -join ', ')." -ForegroundColor Yellow
+    exit 1
+}
+
+if ($Only.Count -gt 0) {
+    # Everything off except the listed blocks.
+    foreach ($entry in $script:BlockToggleMap.GetEnumerator()) {
+        Set-Variable -Name $entry.Value -Value ([bool]($Only -contains $entry.Key)) -Scope Script
+    }
+}
+
+if ($Skip.Count -gt 0) {
+    foreach ($key in $Skip) {
+        Set-Variable -Name $script:BlockToggleMap[$key] -Value $false -Scope Script
     }
 }
 
@@ -1667,6 +1708,18 @@ try {
     Write-RollbackRegFile
     Invoke-AppCleanup
     Invoke-GpUpdateAndExplorer
+
+    # -ThenVerify: after a real Apply, immediately re-read every setting in Verify mode and
+    # append the results to the same report. This confirms the registry values landed
+    # (it does NOT prove Windows UI honors a policy before a reboot - that caveat stands).
+    if ($ThenVerify -and $Mode -eq "Apply") {
+        Write-Section "Auto-Verify (after Apply)"
+        $Mode = "Verify"
+        Invoke-AllRegistrySettings
+        Invoke-AppCleanup
+        $Mode = "Apply"
+    }
+
     Write-Reports
     Write-RunSummary
 

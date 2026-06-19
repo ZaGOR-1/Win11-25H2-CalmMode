@@ -111,6 +111,9 @@ cd "$env:USERPROFILE\Desktop"
 | `-NoReport` | off | Не створювати теку звіту, transcript і файли CSV/HTML/JSON (вивід лише в консоль). Діє тільки в read-only режимах `Audit`/`Verify`; у `Apply` ігнорується з попередженням, бо backup і `rollback.reg` потребують теки |
 | `-ConfigPath` | (немає) | Шлях до JSON-конфігу, що вмикає/вимикає блоки і вимикає окремі твіки без редагування `.ps1`. Зазвичай формується графічним інтерфейсом. Схема: `{ "blocks": { "<BlockKey>": true\|false }, "disabledTweaks": ["<Path>\<Name>"] }` |
 | `-ExportCatalog` | off | Read-only: друкує JSON-каталог усіх блоків і твіків і виходить. Нічого не змінює, не створює теку. Використовується графічним інтерфейсом |
+| `-Skip` | (немає) | Швидка альтернатива `-ConfigPath`: список ключів блоків, які **вимкнути** (напр. `-Skip Widgets,Gaming`). Ключі — як у каталозі/конфігу. Не поєднується з `-Only` |
+| `-Only` | (немає) | Залишити увімкненими **лише** перелічені блоки, решту вимкнути (напр. `-Only WindowsAI`). Не поєднується з `-Skip` |
+| `-ThenVerify` | off | Після `Apply` одразу прогнати `Verify` і дописати його результати в той самий звіт (підтверджує, що значення записались). Діє лише в `Apply` |
 | `-SkipRestorePoint` | off | Не створювати restore point у `Apply` |
 | `-NoAppCleanup` | off | Пропустити видалення Appx-пакетів |
 | `-NoRestartExplorer` | off | Не перезапускати Explorer після `Apply` |
@@ -137,6 +140,17 @@ cd "$env:USERPROFILE\Desktop"
 ```powershell
 # Швидкий аудит без створення тек/файлів звіту (вивід лише в консоль)
 .\Win11-25H2-CalmMode.ps1 -Mode Audit -NoReport
+```
+
+```powershell
+# Швидкий вибір блоків без конфіг-файлу
+.\Win11-25H2-CalmMode.ps1 -Mode Audit -Skip Widgets,Gaming     # усе, крім Widgets і Gaming
+.\Win11-25H2-CalmMode.ps1 -Mode Audit -Only WindowsAI          # лише блок Windows AI
+```
+
+```powershell
+# Apply і одразу Verify у тому ж звіті
+.\Win11-25H2-CalmMode.ps1 -Mode Apply -ThenVerify
 ```
 
 ---

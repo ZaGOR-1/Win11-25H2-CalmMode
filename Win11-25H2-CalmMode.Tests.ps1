@@ -270,6 +270,38 @@ Describe "Config mechanism (integration)" {
         }
     }
 
+    Context "-Skip / -Only block selection" {
+        function Get-AuditResults {
+            param([string[]]$ExtraArgs)
+            & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -ReportPath $script:tempReports @ExtraArgs *> $null
+            $dir = Get-ChildItem -LiteralPath $script:tempReports -Directory -Filter "Win11-25H2-CalmMode-v*-Audit-*" |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            $json = Get-ChildItem -LiteralPath $dir.FullName -Filter "*-results.json" | Select-Object -First 1
+            return , @(Get-Content -LiteralPath $json.FullName -Raw | ConvertFrom-Json)
+        }
+
+        It "-Skip removes the skipped block's results" {
+            $results = Get-AuditResults -ExtraArgs @("-Skip", "Gaming")
+            (@($results | Where-Object { $_.Category -eq "Gaming" })).Count | Should -Be 0
+        }
+
+        It "-Only keeps the listed block and drops the others" {
+            $results = Get-AuditResults -ExtraArgs @("-Only", "WindowsAI")
+            (@($results | Where-Object { $_.Category -eq "Windows AI" })).Count | Should -BeGreaterThan 0
+            (@($results | Where-Object { $_.Category -eq "Widgets" })).Count | Should -Be 0
+        }
+
+        It "-Skip and -Only together exit with code 1" {
+            & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -NoReport -Skip Gaming -Only WindowsAI *> $null
+            $LASTEXITCODE | Should -Be 1
+        }
+
+        It "an unknown block key exits with code 1" {
+            & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -NoReport -Skip Nonsense *> $null
+            $LASTEXITCODE | Should -Be 1
+        }
+    }
+
     Context "config errors" {
         It "exits with code 1 on a missing config path" {
             & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -ConfigPath "Z:\does\not\exist.json" -NoReport *> $null

@@ -476,6 +476,8 @@ function Invoke-Engine {
         "-ConfigPath", "`"$cfgPath`"",
         "-ReportPath", "`"$reportBase`""
     )
+    # Apply: also run a Verify pass so the results window confirms the values landed.
+    if ($Mode -eq "Apply") { $argList += "-ThenVerify" }
 
     try {
         $form.Enabled = $false

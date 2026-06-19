@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [v2.6] - 2026-06-20
+
+### Added
+
+- **`-Skip` / `-Only`** — a quick CLI alternative to `-ConfigPath` for whole-block selection. `-Skip Widgets,Gaming` turns the listed blocks off; `-Only WindowsAI` keeps only the listed blocks and turns the rest off. Keys are validated against `$script:BlockToggleMap`; combining `-Skip`+`-Only` or an unknown key is an error (exit 1). Applied after `-ConfigPath`, so they can refine a loaded config.
+- **`-ThenVerify`** — after a successful `Apply`, immediately run a `Verify` pass and append its results to the same report (confirms the registry values landed; it does not prove Windows UI honors a policy before a reboot). Ignored unless `-Mode Apply`.
+- **GUI:** Apply now passes `-ThenVerify`, so the results window shows the Verify rows right after applying.
+- Pester tests for `-Skip`/`-Only` (block off, only-mode, conflict, unknown key) — 42 total.
+
 ## [v2.5] - 2026-06-20
 
 ### Added
