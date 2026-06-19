@@ -18,6 +18,11 @@
 
 - Вимкнений через `-ConfigPath` окремий твік отримує статус `Skipped` («Disabled via -ConfigPath selection.») і не читається/не пишеться.
 
+### Виправлено
+
+- Чистіший transcript-лог: `Get-RegValueSafe` тепер читає ключ цілком і шукає значення через `PSObject`, тож відсутнє значення більше не кидає terminating error (раніше `-Name ... -ErrorAction Stop` спричиняв десятки рядків `PS>TerminatingError(Get-ItemProperty)` у логу, хоча catch їх коректно обробляв). Результати аудиту незмінні.
+- Appx-аудит без прав адміністратора більше не засмічує лог: виклики `Get-AppxPackage -AllUsers` і `Get-AppxProvisionedPackage -Online` (які завжди потребують elevation і кидали terminating `Access is denied` / `requires elevation`) пропускаються, коли скрипт запущено не від адміністратора. Дані ті самі (порожньо), лог чистий.
+
 ## [v2.2] - 2026-06-18
 
 ### Додано

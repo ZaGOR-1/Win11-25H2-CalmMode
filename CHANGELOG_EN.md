@@ -18,6 +18,11 @@ This project uses a simple versioning style: `vMAJOR.MINOR`.
 
 - A tweak disabled via `-ConfigPath` is reported as `Skipped` ("Disabled via -ConfigPath selection.") and is never read or written.
 
+### Fixed
+
+- Cleaner transcript log: `Get-RegValueSafe` now reads the whole key and looks the value up via `PSObject`, so a missing value name no longer raises a terminating error (previously `-Name ... -ErrorAction Stop` produced dozens of `PS>TerminatingError(Get-ItemProperty)` lines in the log even though the catch handled them correctly). Audit results are unchanged.
+- Appx audit without administrator no longer floods the log: `Get-AppxPackage -AllUsers` and `Get-AppxProvisionedPackage -Online` (which always require elevation and threw a terminating `Access is denied` / `requires elevation`) are skipped when the script is not running as administrator. The data is identical (empty), the log is clean.
+
 ## [v2.2] - 2026-06-18
 
 ### Added

@@ -387,8 +387,16 @@ function Get-RegValueSafe {
             return [pscustomobject]@{ Exists = $false; Value = $null; Error = $null }
         }
 
-        $props = Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop
-        return [pscustomobject]@{ Exists = $true; Value = $props.$Name; Error = $null }
+        # Read the whole key and look the value up via PSObject so a missing
+        # value name does NOT raise a terminating error (which -Name would).
+        # That keeps the transcript clean: a missing value is a normal flow,
+        # not a logged "TerminatingError(Get-ItemProperty)" line.
+        $props = Get-ItemProperty -Path $Path -ErrorAction Stop
+        $member = $props.PSObject.Properties[$Name]
+        if ($null -ne $member) {
+            return [pscustomobject]@{ Exists = $true; Value = $member.Value; Error = $null }
+        }
+        return [pscustomobject]@{ Exists = $false; Value = $null; Error = $null }
     } catch {
         return [pscustomobject]@{ Exists = $false; Value = $null; Error = $_.Exception.Message }
     }
@@ -863,17 +871,24 @@ function Get-AppxMatches {
             }
         } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
 
-        try {
-            $allUsers += Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object {
-                $_.Name -like $pattern -or $_.PackageFullName -like $pattern
-            }
-        } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
+        # -AllUsers and -Online provisioned queries always require elevation and
+        # throw a *terminating* "Access is denied" / "requires elevation" error
+        # without admin (which -ErrorAction SilentlyContinue does not suppress and
+        # the transcript logs as noise). Skip them when not admin: the result is
+        # the same empty set, just without the alarming log lines.
+        if ($script:CurrentUserIsAdmin) {
+            try {
+                $allUsers += Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object {
+                    $_.Name -like $pattern -or $_.PackageFullName -like $pattern
+                }
+            } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
 
-        try {
-            $provisioned += Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
-                $_.DisplayName -like $pattern -or $_.PackageName -like $pattern
-            }
-        } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
+            try {
+                $provisioned += Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
+                    $_.DisplayName -like $pattern -or $_.PackageName -like $pattern
+                }
+            } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
+        }
     }
 
     return [pscustomobject]@{
