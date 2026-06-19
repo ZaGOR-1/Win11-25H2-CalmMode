@@ -1,106 +1,117 @@
 # ROADMAP — Win11 25H2 CalmMode
 
-План покращень основного скрипта `Win11-25H2-CalmMode.ps1`, згрупований по фазах за пріоритетом.
-Кожен пункт лишається в рамках філософії проєкту: безпека, прозорість, відкатність, opt-in для ризикованого.
+План розвитку проєкту, згрупований по фазах за пріоритетом. Кожен пункт лишається в рамках
+філософії проєкту: **безпека, прозорість, відкатність, opt-in для ризикованого, без зовнішніх
+залежностей, сумісність із Windows PowerShell 5.1**.
 
 Легенда ризику: 🟢 низький · 🟡 середній · 🔴 потребує обережності/дизайну.
 
----
-
-## ✅ Фаза 0 — зроблено (ця сесія)
-
-- [x] UBR-гейтинг: fail-open при невідомому UBR + `[int]`-каст `$script:UBR`.
-- [x] Preflight-попередження «Per-user hive (HKCU)» — коли скрипт запущено під обліковим записом, відмінним від інтерактивного користувача.
-- [x] Порожні `catch {}` → `catch { Write-Verbose ... }` (не глушити помилки мовчки).
-- [x] PSScriptAnalyzer: 0 findings (обґрунтовані виключення false-positive/стильових правил у `PSScriptAnalyzerSettings.psd1`).
-- [x] +3 регресійні тести на `Get-Applicability` (UBR known-below / meets / unknown).
+> Статус на момент аудиту (2026-06-19): `VERSION = 2.3`. Гейти зелені — parse (рушій + GUI),
+> PSScriptAnalyzer CLEAN, Pester 26/26, Audit `EXIT=0`, forbidden patterns відсутні.
 
 ---
 
-## Фаза 1 — швидкі безпечні фікси коректності (HIGH) — ✅ ЗРОБЛЕНО
+## ✅ Зроблено
 
-Маленькі точкові патчі, велика віддача для надійності/автоматизації. Не торкаються системи.
+### Фаза 0 — базова коректність
+- [x] UBR-гейтинг: fail-open при невідомому UBR.
+- [x] Preflight «Per-user hive (HKCU)» — попередження, коли скрипт запущено під іншим акаунтом.
+- [x] Preflight «PowerShell bitness» — попередження про 32-bit на 64-bit Windows (WOW6432Node).
+- [x] Порожні `catch {}` → запис у verbose-потік.
+- [x] PSScriptAnalyzer: 0 findings (обґрунтовані виключення у `PSScriptAnalyzerSettings.psd1`).
 
-- [x] **1.1 Код виходу за результатами** 🟢 ✅
-  - Наприкінці MAIN: `exit 2`, якщо є хоч один `Error`/`VerifyFail`; інакше `exit 0`. Обчислюється після закриття transcript.
-  - Перевірено: чистий Audit → код `0`.
+### Фаза 1 — фікси коректності (HIGH)
+- [x] Код виходу за результатами: `exit 2`, якщо є `Error`/`VerifyFail`; інакше `exit 0`.
+- [x] Тіло MAIN у `try/finally` — transcript закривається навіть при винятку.
+- [x] `Test-ValueEquals` для DWord через `[long]` (без Int32-overflow).
 
-- [x] **1.2 Transcript у try/finally** 🟢 ✅
-  - Тіло MAIN обгорнуто в `try { … } finally { Stop-Transcript }` — лог закривається навіть при винятку посеред прогону.
+### Фаза 2 — прозорість і якість (MEDIUM)
+- [x] `-ReportPath` (база теки звіту) + `-NoReport` (без теки/файлів, read-only режими).
+- [x] Appx cleanup фіксує причину кожного незнятого пакета у звіт (best-effort збережено).
+- [x] Перезапуск Explorer не плодить два процеси.
+- [x] Звіти CSV/JSON/HTML — UTF-8 **без BOM**.
+- [x] `Format-RegValueLine` для великих/негативних DWord (маска `[long] -band 0xffffffff`).
+- [x] Гігієна: виправлено відступи у блоці `EnableManualWindowsUpdateMode`.
 
-- [x] **1.3 Warning для 32-bit PowerShell на 64-bit Windows** 🟢 ✅
-  - Preflight-рядок «PowerShell bitness»: `Warning` + пояснення про WOW6432Node, якщо `-not Is64BitProcess -and Is64BitOperatingSystem`.
-
-- [x] **1.4 `Test-ValueEquals` для великих DWord** 🟢 ✅
-  - Порівняння через `[long]` замість `[int]` (REG_DWORD беззнаковий 32-біт). Додано регрес-тест із `0xFFFFFFFF`.
-
----
-
-## Фаза 2 — прозорість і якість (MEDIUM) — ✅ ЗРОБЛЕНО
-
-- [x] **2.1 Параметр `-ReportPath` (+ `-NoReport`)** 🟡 ✅
-  - Додано `-ReportPath` (база теки звіту, дефолт — Desktop) і `-NoReport` (без теки/transcript/файлів, лише консоль).
-  - `-NoReport` діє тільки в read-only режимах; у `Apply` примусово вимикається з попередженням, бо backup і `rollback.reg` потребують теки.
-  - Перевірено: `Audit -ReportPath C:\Temp\…` пише туди; `Audit -NoReport` не створює папку (EXIT=0).
-
-- [x] **2.2 Захоплення причин помилок Appx** 🟡 ✅
-  - `Remove-Appx*` тепер у `try/catch` з `-ErrorAction Stop`; кожна причина незнятого пакета збирається і додається в `Message` звіту. Best-effort збережено (одна помилка не зриває весь target).
-
-- [x] **2.3 Подвійний Explorer** 🟢 ✅
-  - Після `Stop-Process explorer` скрипт стартує `explorer.exe` лише якщо shell не перезапустився сам (`Get-Process explorer`).
-
-- [x] **2.4 UTF-8 без BOM для CSV/JSON/HTML** 🟢 ✅
-  - Звіти пишуться через `UTF8Encoding($false)` (`WriteAllLines`/`WriteAllText`). Перевірено hex: перші байти CSV `22 54 69` (`"Ti`), без `EF BB BF`.
-
-- [x] **2.5 Розширити тести** 🟢 ✅
-  - Додано: `Format-RegValueLine` з великим (`0xFFFFFFFF`) і негативним (`-1`) DWord; `Get-Applicability` для `MaybeIgnoredOnEdition` + `ApplyIfMaybeUnsupported=$false` (CanApply=$false). Pester: 26/26.
-
-- [x] **2.6 Дрібна гігієна коду** 🟢 ✅ (частково)
-  - Виправлено збиті відступи у блоці `if ($EnableManualWindowsUpdateMode)`.
-  - Принагідно виправлено реальний баг: `Format-RegValueLine` кодував DWord через `[int]` → переповнення для значень > 2147483647; тепер маска `[long] -band 0xffffffff`.
-  - Винесення магічних рядків статусів у константи **свідомо відкладено**: це зачіпає 40+ call-site `Add-Result` і суперечить принципу «малі патчі, без rewrite». Кандидат для окремої задачі.
+### Фаза 3.1 — конфіг без редагування скрипта + GUI (найбільша user-facing цінність)
+- [x] `-ConfigPath <json>`: блоки on/off + `disabledTweaks` по ключу `"$Path\$Name"`.
+- [x] `-ExportCatalog`: read-only JSON-каталог блоків і твіків (контракт для GUI).
+- [x] Кожен твік має стабільний `Key` і тег `BlockKey`; вимкнений твік → `Skipped`.
+- [x] **GUI** `Win11-25H2-CalmMode-GUI.ps1` (WinForms, гібрид блоки+твіки, Audit → явний Apply).
+- [x] Лаунчер `Win11-25H2-CalmMode-GUI.cmd` (подвійний клік; не `.exe`, без base64 — заради прозорості й уникнення AV/SmartScreen).
 
 ---
 
-## Фаза 3 — нові фічі (за пріоритетом цінності)
+## Фаза R — реліз v2.3 (зробити першим) 🟡
 
-- [ ] **3.1 Конфіг без редагування скрипта** 🔴 *(найбільша user-facing цінність)*
-  - Проблема: усі toggles (`$Enable*`, `$Remove*`) — змінні в коді; користувач мусить правити `.ps1`.
-  - Фікс: `-ConfigPath config.json` та/або CLI-перемикачі (`-Skip Widgets,Gaming` / `-Only WindowsAI`).
-  - Ризик: дизайн параметрів і валідація; зберегти безпечні дефолти.
-  - Перевірка: запуск із config-файлом vs без — однаковий результат для дефолтів.
+Робоче дерево містить незакомічену роботу Фаз 2–3 + два нові GUI-файли. Перед публікацією:
 
-- [ ] **3.2 Авто-`Verify` після `Apply`** 🟢
-  - Прапор `-ThenVerify` або `-Mode All`. Зараз — два ручні запуски.
+- [ ] **R.1 Закомітити роботу логічними групами** 🟢
+  - Напр.: `feat: config-driven selection + GUI`, `fix: reports/appx/explorer (phase 2)`, `docs: readme/changelog/roadmap`, `chore: version 2.3`.
+- [ ] **R.2 Оновити/перегенерувати `AUDIT.md`** 🟢
+  - Поточний `AUDIT.md` описує pre-release стан v2.2 і вже неактуальний (рекомендований ним bump до 2.3 виконано).
+- [ ] **R.3 Зібрати чистий реліз і перевірити** 🟢
+  - `New-ReleaseArchive.ps1` (вже включає GUI `.ps1` + `.cmd`), звірити SHA256, переконатися що ZIP без `.git`/`.vs`/`settings.local.json`/звітів.
+- [ ] **R.4 Тег `v2.3`** 🟡
+  - Не переписувати наявний `v2.2`; створити новий тег після пушу. Release workflow збирається по тегу.
+- [ ] **R.5 Дрібна гігієна** 🟢
+  - Додати `.vs/` явно у `.gitignore` (IDE-кеш); оновити приклад версії у `AGENTS.md`/`CLAUDE.md` (зараз `v2.2`).
 
-- [ ] **3.3 Виявлення pending reboot** 🟢
+---
+
+## Фаза 4 — якість і покриття (MEDIUM)
+
+- [ ] **4.1 Тести на конфіг-механізм** 🟢 *(прогалина, виявлена аудитом)*
+  - Pester для: парсингу `-ConfigPath` (блоки → toggles), фільтра `disabledTweaks` (→ `Skipped`), структури каталогу `-ExportCatalog`.
+  - GUI: розширити `-SelfTest` (вже будує дерево) перевіркою формування конфігу з вибору.
+
+- [ ] **4.2 GUI: показ результату у вікні** 🟡
+  - Зараз Audit/Apply відкривають окрему консоль. Додати читання згенерованого JSON-звіту і показ у таблиці/панелі «Needs attention» прямо в формі.
+
+- [ ] **4.3 GUI: прибирання temp-конфігів + дрібниці** 🟢
+  - Видаляти `%TEMP%\Win11-CalmMode-GUI-config-*.json` після запуску; кнопки **Save/Load config**; базова підтримка HiDPI.
+
+- [ ] **4.4 Винести статус-рядки у константи** 🟢 *(відкладено з Фази 2.6)*
+  - `Compliant`/`WouldChange`/`Skipped`/… як константи. Інвазивно (40+ call-site `Add-Result`) — робити акуратно, окремим патчем.
+
+---
+
+## Фаза 5 — нові фічі (за пріоритетом цінності)
+
+- [ ] **5.1 CLI-перемикачі `-Skip` / `-Only`** 🟡
+  - Альтернатива `-ConfigPath` для швидкого CLI (`-Skip Widgets,Gaming` / `-Only WindowsAI`). Валідація через наявну `$script:BlockToggleMap`.
+
+- [ ] **5.2 Авто-`Verify` після `Apply`** 🟢
+  - Прапор `-ThenVerify` або `-Mode All`. GUI міг би показувати Verify одразу після Apply.
+
+- [ ] **5.3 Виявлення pending reboot** 🟢
   - Перевіряти `Component Based Servicing\RebootPending`, `WindowsUpdate\...\RebootRequired`, `PendingFileRenameOperations`; показувати у звіті (багато політик «доїжджають» після reboot).
 
-- [ ] **3.4 Зручний rollback** 🟡
-  - Прапор `-RestoreFrom <reportFolder>` — імпорт згенерованого `rollback.reg` (`reg import`), щоб не шукати файл вручну.
-  - Перевірка: `Apply` → `-RestoreFrom` повертає попередні значення.
+- [ ] **5.4 Зручний rollback `-RestoreFrom <reportFolder>`** 🟡
+  - Імпорт згенерованого `rollback.reg` (`reg import`), щоб не шукати файл вручну. У GUI — кнопка «Undo last Apply».
 
-- [ ] **3.5 Покращений HTML-звіт** 🟢
+- [ ] **5.5 Підсумок наприкінці прогону** 🟢
+  - Друк лічильників (`WouldChange=N, Compliant=M, Skipped=K, …`); для `-WhatIf` — скільки б змінилось.
+
+- [ ] **5.6 Покращений HTML-звіт** 🟢
   - Секція «Needs attention» угорі (Warning / VerifyFail / RequiresVerification / MaybeIgnoredOnEdition) + зведення по `Confidence`.
 
-- [ ] **3.6 Підсумок наприкінці** 🟢
-  - Друк лічильників (`WouldChange=N, Compliant=M, …`); для `-WhatIf` — скільки б змінилось.
+- [ ] **5.7 Opt-in `Enable-ComputerRestore`** 🔴
+  - Прапор `-EnableSystemProtection`: якщо System Protection вимкнено, увімкнути перед restore point (інакше точка тихо не створюється). Системна зміна → лише за явним прапором, з документацією.
 
-- [ ] **3.7 Opt-in `Enable-ComputerRestore`** 🔴
-  - Прапор `-EnableSystemProtection`: якщо System Protection вимкнено, увімкнути його перед restore point (інакше точка тихо не створюється).
-  - Ризик: системна зміна → лише за явним прапором, з документацією.
-
-- [ ] **3.8 Authenticode-підпис `.ps1` / catalog** 🟡
-  - Дати користувачам перевірити цілісність скрипта (доповнює наявний SHA256).
+- [ ] **5.8 Authenticode-підпис `.ps1`** 🟡
+  - Дати користувачам перевірити цілісність скрипта (доповнює SHA256). Дозволив би й «легітимний» підписаний `.exe`-лаунчер без AV/SmartScreen-проблем.
 
 ---
 
-## Рекомендований порядок виконання
+## Рекомендований порядок
 
-1. **Фаза 1** цілком (1.1–1.4) — дрібні, безпечні, одразу корисні.
-2. **3.1** — найбільша цінність для користувачів (але потребує дизайну).
-3. **3.3 + 2.1** — помітно покращують прозорість.
-4. Решта Фази 2 — гігієна/якість.
-5. Решта Фази 3 — за бажанням; 3.1, 3.7 робити обережно й документувати.
+1. **Фаза R** — закрити реліз v2.3 (закомітити, оновити AUDIT.md, зібрати ZIP, тег).
+2. **4.1** — тести на конфіг (закрити прогалину покриття після великої фічі).
+3. **4.2 + 5.5/5.6** — прозорість результату (у вікні GUI та у звіті).
+4. **5.1, 5.3, 5.2** — зручність CLI/потоку.
+5. **5.4, 5.7, 5.8** — обережно, з документацією й opt-in.
 
-> Будь-яка зміна, що впливає на параметри/поведінку/звіти, має супроводжуватись оновленням README + CHANGELOG_UA/EN і, за потреби, bump версії.
+> Будь-яка зміна, що впливає на параметри/поведінку/звіти, має супроводжуватись оновленням
+> `README.md` + `CHANGELOG_UA/EN` і, за потреби, bump версії. GUI лишається тонким шаром: уся
+> логіка політик — у рушії `Win11-25H2-CalmMode.ps1` (єдине джерело істини).

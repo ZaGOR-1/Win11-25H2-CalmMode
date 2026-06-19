@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [v2.3] - 2026-06-19
+
+### Added
+
+- **Graphical interface** `Win11-25H2-CalmMode-GUI.ps1` (Windows Forms, no external dependencies): a checkbox tree of blocks that expand into individual tweaks. A **Run Audit** button (read-only) and a separate **Apply** button (with confirmation and an Administrator requirement). The GUI contains no policy logic of its own — it reads the engine catalog and writes a config.
+- **Launcher `Win11-25H2-CalmMode-GUI.cmd`** to open the GUI with a double-click. It is a plain text `.cmd` (not a compiled `.exe`, no base64/hidden code) on purpose — to keep the project transparent and avoid antivirus/SmartScreen false positives.
+- `-ConfigPath <json>` engine parameter: enable/disable blocks and disable individual tweaks via a config file, without editing the `.ps1`. Schema: `{ "blocks": { "<BlockKey>": true|false }, "disabledTweaks": ["<Path>\<Name>"] }`.
+- `-ExportCatalog` engine parameter: a read-only mode that prints a JSON catalog of all blocks and tweaks (changes nothing, no report folder/transcript). This is the contract the GUI consumes, keeping the engine the single source of truth.
+- Every tweak now has a stable key (`"$Path\$Name"`) and a block tag (`BlockKey`) for config selection and GUI grouping.
+
+### Changed
+
+- A tweak disabled via `-ConfigPath` is reported as `Skipped` ("Disabled via -ConfigPath selection.") and is never read or written.
+
 ## [v2.2] - 2026-06-18
 
 ### Added

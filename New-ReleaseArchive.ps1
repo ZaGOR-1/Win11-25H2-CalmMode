@@ -37,6 +37,8 @@ $filesToInclude = @(
     "LICENSE",
     "VERSION",
     "Win11-25H2-CalmMode.ps1",
+    "Win11-25H2-CalmMode-GUI.ps1",
+    "Win11-25H2-CalmMode-GUI.cmd",
     "Win11-25H2-CalmMode.Tests.ps1"
 )
 

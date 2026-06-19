@@ -58,6 +58,15 @@ param(
     # because the registry backup and rollback.reg require the report folder.
     [switch]$NoReport,
 
+    # Optional JSON config that selects which blocks/tweaks run. Lets a config file
+    # (or the GUI launcher) drive selection without editing the in-script toggles.
+    # Schema: { "blocks": { "<BlockKey>": true|false, ... }, "disabledTweaks": ["<Path>\<Name>", ...] }
+    [string]$ConfigPath = "",
+
+    # Read-only: print the catalog of all blocks and registry tweaks as JSON, then exit.
+    # Creates no report folder and changes nothing. Used by the GUI to build its checkboxes.
+    [switch]$ExportCatalog,
+
     [switch]$SkipRestorePoint,
     [switch]$NoAppCleanup,
     [switch]$NoRestartExplorer
@@ -94,6 +103,84 @@ $RemoveCopilotApp           = $false
 $RemoveTeamsPersonal        = $false
 $RemoveXboxApps             = $false
 $RemoveOneDrive             = $false
+
+# ============================================================
+# CONFIG OVERRIDE (-ConfigPath)
+# ============================================================
+# A JSON config (typically written by the GUI launcher) can override the toggles
+# above and disable individual tweaks by key. This keeps the engine the single
+# source of truth: the GUI never duplicates policy logic, it only selects.
+#
+# Schema (all parts optional):
+#   {
+#     "blocks":         { "WindowsAI": true, "Widgets": false, ... },
+#     "disabledTweaks": ["HKLM:\\...\\Path\\ValueName", ...]
+#   }
+# Block keys map 1:1 to the $Enable*/$Remove*/$DisableFastStartup variables below.
+
+# Maps a friendly block key (used in config + GUI) to the toggle variable name.
+$script:BlockToggleMap = [ordered]@{
+    "WindowsAI"               = "EnableWindowsAIBlock"
+    "Widgets"                 = "EnableWidgetsBlock"
+    "CloudContent"            = "EnableCloudContentBlock"
+    "Privacy"                 = "EnablePrivacyBlock"
+    "Search"                  = "EnableSearchBlock"
+    "StartTaskbar"            = "EnableStartTaskbarBlock"
+    "WindowsUpdate"           = "EnableWindowsUpdateBlock"
+    "DeliveryOptimization"    = "EnableDeliveryOptimization"
+    "ManualWindowsUpdateMode" = "EnableManualWindowsUpdateMode"
+    "TargetReleaseVersionPin" = "EnableTargetReleaseVersionPin"
+    "EdgeQuietMode"           = "EnableEdgeQuietMode"
+    "DeveloperMode"           = "EnableDeveloperMode"
+    "LongPaths"               = "EnableLongPaths"
+    "FastStartupDisable"      = "DisableFastStartup"
+    "Gaming"                  = "EnableGamingTweaks"
+    "RemoveCopilotApp"        = "RemoveCopilotApp"
+    "RemoveTeamsPersonal"     = "RemoveTeamsPersonal"
+    "RemoveXboxApps"          = "RemoveXboxApps"
+    "RemoveOneDrive"          = "RemoveOneDrive"
+}
+
+# Tweak keys ("$Path\$Name") that the config asked to skip. Compared case-insensitively.
+$script:DisabledTweaks = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+# Set by Initialize-RegistrySettings at the start of each block so every Add-RegSetting
+# call inside that block is tagged with its block key (used for GUI grouping).
+$script:CurrentBlockKey = ""
+
+if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) {
+        Write-Host "ERROR: -ConfigPath not found: $ConfigPath" -ForegroundColor Red
+        exit 1
+    }
+    try {
+        $cfgRaw = Get-Content -LiteralPath $ConfigPath -Raw -ErrorAction Stop
+        $cfg = $cfgRaw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-Host "ERROR: Could not parse -ConfigPath JSON: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+
+    if ($cfg.PSObject.Properties.Name -contains "blocks" -and $null -ne $cfg.blocks) {
+        foreach ($prop in $cfg.blocks.PSObject.Properties) {
+            $blockKey = $prop.Name
+            if ($script:BlockToggleMap.Contains($blockKey)) {
+                $varName = $script:BlockToggleMap[$blockKey]
+                Set-Variable -Name $varName -Value ([bool]$prop.Value) -Scope Script
+            } else {
+                Write-Host "WARNING: Unknown config block key ignored: $blockKey" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    if ($cfg.PSObject.Properties.Name -contains "disabledTweaks" -and $null -ne $cfg.disabledTweaks) {
+        foreach ($tweakKey in $cfg.disabledTweaks) {
+            if (-not [string]::IsNullOrWhiteSpace($tweakKey)) {
+                [void]$script:DisabledTweaks.Add([string]$tweakKey)
+            }
+        }
+    }
+}
 
 # ============================================================
 # GLOBALS / PRE-FLIGHT
@@ -134,7 +221,8 @@ if ($Mode -eq "Apply" -and -not $script:CurrentUserIsAdmin) {
     exit 1
 }
 
-if ($Mode -ne "Apply" -and -not $script:CurrentUserIsAdmin) {
+if ($Mode -ne "Apply" -and -not $script:CurrentUserIsAdmin -and -not $ExportCatalog) {
+    # -ExportCatalog must emit only JSON on stdout (the GUI parses it), so stay silent here.
     Write-Host "WARNING: You are not running as Administrator. Audit/Verify can continue, but some HKLM/Appx checks may be incomplete." -ForegroundColor Yellow
 }
 
@@ -190,6 +278,9 @@ if ($script:NoReport -and $Mode -eq "Apply") {
     Write-Host "WARNING: -NoReport is ignored in Apply mode because the registry backup and rollback.reg require the report folder." -ForegroundColor Yellow
     $script:NoReport = $false
 }
+
+# -ExportCatalog is a pure read-only dump: never create a folder or transcript for it.
+if ($ExportCatalog) { $script:NoReport = $true }
 
 if ($script:NoReport) {
     $script:ReportDir = ""
@@ -418,6 +509,12 @@ function Add-RegSetting {
     )
 
     $script:RegistrySettings.Add([pscustomobject]@{
+        # Stable key for config selection and the GUI: a tweak is uniquely identified
+        # by its registry path + value name. Computed here, so no call site changes.
+        Key = "$Path\$Name"
+        # The block this tweak belongs to (set by Initialize-RegistrySettings per section).
+        # Lets the GUI group tweaks under their block without a fragile category lookup.
+        BlockKey = $script:CurrentBlockKey
         Category = $Category
         Path = $Path
         Name = $Name
@@ -435,6 +532,14 @@ function Add-RegSetting {
 
 function Invoke-RegSetting {
     param([pscustomobject]$Setting)
+
+    # Config/GUI can disable individual tweaks by key ("$Path\$Name"). A disabled tweak
+    # is reported as Skipped (in every mode) and never read or written.
+    if ($script:DisabledTweaks.Contains($Setting.Key)) {
+        Add-Result $Setting.Category $Setting.Description "Skipped" "" $Setting.Value $Setting.Path $Setting.Name $Setting.Confidence "DisabledByConfig" "Disabled via -ConfigPath selection."
+        Write-ResultLine "Skipped" $Setting.Category $Setting.Description "" $Setting.Value "Disabled by config."
+        return
+    }
 
     $applicability = Get-Applicability $Setting
     $desired = $Setting.Value
@@ -1004,6 +1109,7 @@ function Add-PreflightResults {
 function Initialize-RegistrySettings {
     # ---------------- Windows AI / Recall / Copilot ----------------
     if ($EnableWindowsAIBlock) {
+        $script:CurrentBlockKey = "WindowsAI"
         $WindowsAI_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI"
         $WindowsAI_HKCU = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI"
         $WindowsCopilot_HKCU = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
@@ -1030,6 +1136,7 @@ function Initialize-RegistrySettings {
 
     # ---------------- Widgets / News / Weather ----------------
     if ($EnableWidgetsBlock) {
+        $script:CurrentBlockKey = "Widgets"
         $Dsh_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
         Add-RegSetting "Widgets" $Dsh_HKLM "AllowNewsAndInterests" "DWord" 0 "Disable Widgets / News and Interests" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Policy-backed Widgets disable."
         Add-RegSetting "Widgets" $Dsh_HKLM "DisableWidgetsBoard" "DWord" 1 "Disable Widgets board where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "Newer Widgets policy; may be Insider/build-dependent and not fully documented. Verify after Apply."
@@ -1039,6 +1146,7 @@ function Initialize-RegistrySettings {
 
     # ---------------- Cloud Content / Consumer Experience ----------------
     if ($EnableCloudContentBlock) {
+        $script:CurrentBlockKey = "CloudContent"
         $CloudContent_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
         $CloudContent_HKCU = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
 
@@ -1084,6 +1192,7 @@ function Initialize-RegistrySettings {
 
     # ---------------- Privacy / Diagnostics / Advertising ----------------
     if ($EnablePrivacyBlock) {
+        $script:CurrentBlockKey = "Privacy"
         Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo" "DisabledByGroupPolicy" "DWord" 1 "Disable Advertising ID by policy" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Privacy" "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" "DWord" 0 "Disable Advertising ID for current user" 22000 @() "UISetting" ""
         Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" "DWord" $TelemetryLevel "Set diagnostic data level (AllowTelemetry=$TelemetryLevel)" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "On Pro/Home, 1 means Required diagnostic data; 0 (Security/Off) is honored only on Enterprise/Education/IoT. Configurable via -TelemetryLevel."
@@ -1094,6 +1203,7 @@ function Initialize-RegistrySettings {
 
     # ---------------- Search ----------------
     if ($EnableSearchBlock) {
+        $script:CurrentBlockKey = "Search"
         $Search_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search"
         Add-RegSetting "Search" $Search_HKLM "EnableDynamicContentInWSB" "DWord" 0 "Disable Search highlights / dynamic content in Windows Search Box" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Search" $Search_HKLM "AllowCloudSearch" "DWord" 0 "Disable cloud search integration in Windows Search" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
@@ -1105,6 +1215,7 @@ function Initialize-RegistrySettings {
 
     # ---------------- Start Menu / Taskbar / Explorer ----------------
     if ($EnableStartTaskbarBlock) {
+        $script:CurrentBlockKey = "StartTaskbar"
         $ExplorerPolicy_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
         $ExplorerPolicy_HKCU = "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
         $ExplorerAdvanced_HKCU = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
@@ -1142,6 +1253,7 @@ function Initialize-RegistrySettings {
 
     # ---------------- Windows Update ----------------
     if ($EnableWindowsUpdateBlock) {
+        $script:CurrentBlockKey = "WindowsUpdate"
         $WU_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate"
         $AU_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
 
@@ -1172,11 +1284,13 @@ function Initialize-RegistrySettings {
 
     # ---------------- Delivery Optimization ----------------
     if ($EnableDeliveryOptimization) {
+        $script:CurrentBlockKey = "DeliveryOptimization"
         Add-RegSetting "Delivery Optimization" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" "DODownloadMode" "DWord" 0 "Disable peer-to-peer Delivery Optimization" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "0 = HTTP only; no peer-to-peer."
     }
 
     # ---------------- Edge Quiet Mode ----------------
     if ($EnableEdgeQuietMode) {
+        $script:CurrentBlockKey = "EdgeQuietMode"
         $EdgePolicy_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "StartupBoostEnabled" "DWord" 0 "Disable Edge Startup Boost" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "BackgroundModeEnabled" "DWord" 0 "Do not keep Edge background apps running after close" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
@@ -1188,6 +1302,7 @@ function Initialize-RegistrySettings {
 
     # ---------------- Developer Mode + Long Paths ----------------
     if ($EnableDeveloperMode) {
+        $script:CurrentBlockKey = "DeveloperMode"
         $AppxPolicy_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx"
         $AppModelUnlock_HKLM = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
         Add-RegSetting "Developer" $AppxPolicy_HKLM "AllowDevelopmentWithoutDevLicense" "DWord" 1 "Enable Developer Mode policy" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "SECURITY TRADE-OFF: Allows development without developer license."
@@ -1197,17 +1312,20 @@ function Initialize-RegistrySettings {
     }
 
     if ($EnableLongPaths) {
+        $script:CurrentBlockKey = "LongPaths"
         Add-RegSetting "Developer" "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" "LongPathsEnabled" "DWord" 1 "Enable Win32 long paths" 14393 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Apps also need to be longPathAware. Reboot recommended."
     }
 
     # ---------------- Fast Startup ----------------
     if ($DisableFastStartup) {
+        $script:CurrentBlockKey = "FastStartupDisable"
         Add-RegSetting "Power" "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled" "DWord" 0 "Disable Fast Startup local setting" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Does not disable hibernation itself."
         Add-RegSetting "Power" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" "HiberbootEnabled" "DWord" 0 "Do not require Fast Startup by policy" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "ADMX WinInit Hiberboot policy. Disabled/not configured means local setting is used."
     }
 
     # ---------------- Gaming ----------------
     if ($EnableGamingTweaks) {
+        $script:CurrentBlockKey = "Gaming"
         Add-RegSetting "Gaming" "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" "AppCaptureEnabled" "DWord" 0 "Disable background capture / Game DVR" 22000 @() "UISetting" ""
         Add-RegSetting "Gaming" "HKCU:\System\GameConfigStore" "GameDVR_Enabled" "DWord" 0 "Disable Game DVR in GameConfigStore" 22000 @() "UISetting" ""
         Add-RegSetting "Gaming" "HKCU:\Software\Microsoft\GameBar" "ShowStartupPanel" "DWord" 0 "Hide Game Bar startup panel" 22000 @() "UISetting" ""
@@ -1373,6 +1491,44 @@ $resultsHtml
 # Wrap the whole run so the transcript is always stopped, even on an unexpected
 # terminating error mid-run (otherwise the log file stays open for the session).
 try {
+    # -ExportCatalog short-circuits everything: capture each block's real on/off state,
+    # then force all blocks on so every tweak is registered, build the full catalog, and
+    # print it. Nothing is read from or written to the system beyond version/edition info.
+    if ($ExportCatalog) {
+        $script:BlockDefaults = @{}
+        foreach ($entry in $script:BlockToggleMap.GetEnumerator()) {
+            $script:BlockDefaults[$entry.Key] = [bool](Get-Variable -Name $entry.Value -Scope Script -ValueOnly -ErrorAction SilentlyContinue)
+            Set-Variable -Name $entry.Value -Value $true -Scope Script
+        }
+
+        Initialize-RegistrySettings
+
+        # Report blocks with their captured default state, not the forced-on value.
+        $blocks = foreach ($entry in $script:BlockToggleMap.GetEnumerator()) {
+            [pscustomobject]@{
+                Key     = $entry.Key
+                Toggle  = $entry.Value
+                Enabled = [bool]$script:BlockDefaults[$entry.Key]
+            }
+        }
+        $tweaks = foreach ($s in $script:RegistrySettings) {
+            [pscustomobject]@{
+                Key = $s.Key; BlockKey = $s.BlockKey; Category = $s.Category; Name = $s.Name; Path = $s.Path
+                Type = $s.Type; Value = $s.Value; Description = $s.Description
+                Confidence = $s.Confidence; MinBuild = $s.MinBuild; MinUBR = $s.MinUBR; Editions = $s.Editions
+            }
+        }
+        [pscustomobject]@{
+            ScriptVersion = $script:ScriptVersion
+            Build         = $script:BuildNumber
+            UBR           = $script:UBR
+            EditionGroup  = $script:EditionGroup
+            Blocks        = @($blocks)
+            Tweaks        = @($tweaks)
+        } | ConvertTo-Json -Depth 6
+        exit 0
+    }
+
     Write-Section "$script:ScriptTitle - $Mode"
 
     Write-Host "Mode: $Mode" -ForegroundColor Cyan
