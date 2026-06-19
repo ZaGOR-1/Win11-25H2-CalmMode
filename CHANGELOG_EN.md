@@ -4,6 +4,103 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [v2.9] - 2026-06-20
+
+### Added
+
+- **Engine support for new registry value types:** `QWord`, `ExpandString`, `MultiString` (in
+  addition to `DWord`/`String`). Touches `Add-RegSetting`, `Test-ValueEquals`, the write path in
+  `Invoke-RegSetting`, and `rollback.reg` encoding (`hex(b)`/`hex(2)`/`hex(7)`). This is
+  **infrastructure** for future policies — no existing tweak uses these types yet and current
+  behavior is unchanged.
+
+### Changed
+
+- **Per-run `Get-ItemProperty` cache** (`Get-RegValueSafe`): each key is read once instead of once
+  per value (e.g. ContentDeliveryManager reads ~17 values from one key). Writes invalidate the cache
+  via `Clear-RegKeyCache`, so the Apply read-back always sees fresh data.
+
+### Tests
+
+- `Test-ValueEquals` for `QWord`/`ExpandString`/`MultiString`; `Format-RegValueLine` encoding of the
+  new types (exact hex vectors); cache invariant (`Clear-RegKeyCache`); **idempotency** — a repeated
+  `Apply` on an already-correct value yields `AlreadyConfigured` (no write). **68** total.
+
+## [v2.8] - 2026-06-20
+
+### Added
+
+- **GUI: a "Filter" box** — narrows the tree by substring match on block titles or tweak labels
+  (with a **Clear** button); the selection is never lost (the filter is a view; the canonical model
+  keeps the checkbox state).
+- **GUI: "(N would change)" counts on blocks** after an Audit — shows where the changes are.
+- **GUI: impact preview before Apply** — a quick hidden Audit runs before the UAC prompt and shows
+  roughly how many items would change.
+- **GUI: "Export CSV..." button** in the results window — saves the shown rows (honoring the
+  *Show all* toggle) to CSV.
+- **GUI: "Undo last Apply" fallback** — if no `…-Apply-…` folder is on the Desktop (custom
+  `-ReportPath`, redirected Desktop), the user can browse to a folder containing `rollback.reg`.
+- **`-OpenReport`** engine switch — opt-in: open the HTML report in the browser after writing reports
+  (ignored together with `-NoReport`).
+
+### Changed
+
+- **The GUI reads the selection from the canonical block/tweak model**, not the current (possibly
+  filtered) tree, so `Save config`, `Apply`, and `Select all/none` stay correct while filtering.
+
+### Tests
+
+- `-SelfTest` extended: a filter hides non-matching nodes but does not change the canonical selection,
+  and clearing the filter restores all blocks. Parse of `-OpenReport` (`Audit -NoReport -OpenReport`
+  → exit 0). **58** total.
+
+## [v2.7] - 2026-06-20
+
+### Added
+
+- **`Run configuration` preflight row in the report.** Every run now records the effective
+  configuration: which blocks were enabled, which individual tweaks were disabled, and where the
+  selection came from (`-ConfigPath`/`-Skip`/`-Only`/script defaults). Lands in CSV/JSON/HTML, making
+  reports reproducible.
+- **Pending-reboot banner in the HTML report** — if a reboot is already pending, a prominent warning
+  appears at the top (some policies fully apply only after a restart).
+- **The catalog (`-ExportCatalog`) now exposes a `Title` per block and `AttentionStatuses`** — a single
+  source of truth in the engine.
+
+### Changed
+
+- **Removed engine/GUI duplication.** The "attention" status list (row highlighting) and the
+  human-readable block titles now have a single source in the engine; the GUI reads them from the
+  catalog and keeps its own copies only as a fallback for older versions. Less drift risk on future edits.
+
+### Tests
+
+- `Get-AttentionStatuses` (membership, no duplicates, subset of known statuses); the catalog contains a
+  `Title` for every block and a non-empty `AttentionStatuses`; the `Run configuration` preflight row
+  reflects a disabled block and disabled tweaks. **57** total.
+
+## [v2.6.1] - 2026-06-20
+
+### Fixed
+
+- **Aligned `Audit`/`Verify` with `Apply` for non-applicable policies.** If a policy does not apply to
+  the current edition/build (i.e. `Apply` would skip it), read-only modes now report `Skipped` instead
+  of `WouldChange`/`VerifyFail`. Previously this could produce a false `VerifyFail` during
+  `Apply -ThenVerify` and therefore exit code `2` after an otherwise clean `Apply` (a latent trap for
+  future edition-limited tweaks with `ApplyIfMaybeUnsupported = $false`).
+
+### Documentation
+
+- README: new **"Exit codes"** section (`0`/`1`/`2`) noting that a pre-reboot `Apply -ThenVerify`
+  confirms only the registry write, not the UI effect.
+
+### Tests
+
+- Regression for `Get-RegValueSafe`: a missing value/key returns `Exists=$false`, `Error=$null` with no
+  terminating error.
+- Regression for the fix above: an edition-skipped tweak reports `Skipped` (not `VerifyFail`/`WouldChange`)
+  in both `Verify` and `Audit`; an applicable-but-missing tweak still reports `VerifyFail`. **49** tests total.
+
 ## [v2.6] - 2026-06-20
 
 ### Added
