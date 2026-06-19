@@ -114,6 +114,8 @@ cd "$env:USERPROFILE\Desktop"
 | `-Skip` | (немає) | Швидка альтернатива `-ConfigPath`: список ключів блоків, які **вимкнути** (напр. `-Skip Widgets,Gaming`). Ключі — як у каталозі/конфігу. Не поєднується з `-Only` |
 | `-Only` | (немає) | Залишити увімкненими **лише** перелічені блоки, решту вимкнути (напр. `-Only WindowsAI`). Не поєднується з `-Skip` |
 | `-ThenVerify` | off | Після `Apply` одразу прогнати `Verify` і дописати його результати в той самий звіт (підтверджує, що значення записались). Діє лише в `Apply` |
+| `-RestoreFrom` | (немає) | Відкотити registry-зміни: імпортує `rollback.reg` із вказаної теки звіту (або прямого `.reg`-файлу). Потребує **адміністратора**. Повертає **лише реєстр**, не Appx-пакети |
+| `-EnableSystemProtection` | off | **Opt-in системна зміна:** якщо System Protection вимкнено, увімкнути його перед створенням restore point (інакше точка тихо не створюється). Діє лише в `Apply` |
 | `-SkipRestorePoint` | off | Не створювати restore point у `Apply` |
 | `-NoAppCleanup` | off | Пропустити видалення Appx-пакетів |
 | `-NoRestartExplorer` | off | Не перезапускати Explorer після `Apply` |
@@ -153,6 +155,11 @@ cd "$env:USERPROFILE\Desktop"
 .\Win11-25H2-CalmMode.ps1 -Mode Apply -ThenVerify
 ```
 
+```powershell
+# Відкотити registry-зміни з теки звіту попереднього Apply (потрібен адміністратор)
+.\Win11-25H2-CalmMode.ps1 -RestoreFrom "C:\Users\<you>\Desktop\Win11-25H2-CalmMode-v2.6-Apply-2026-06-20_12-00-00"
+```
+
 ---
 
 ## Графічний інтерфейс (галочки)
@@ -174,11 +181,28 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Win11-25H2-CalmMode-GU
 - кнопка **Run Audit (safe)** — read-only прогін: нічого не змінює; результат показується **прямо у вікні** (таблиця «Needs attention» з фільтром *Show all*), без окремої консолі;
 - кнопка **Apply…** — запитує підтвердження і запускає застосування **від адміністратора** (UAC); перед змінами рушій робить backup і restore point; результат так само показується у вікні, а звіт і `rollback.reg` зберігаються на Робочому столі;
 - кнопки **Save config… / Load config…** — зберегти поточний вибір у JSON-файл і завантажити його пізніше (той самий формат, що й `-ConfigPath`);
+- кнопка **Undo last Apply** — знаходить останню теку `…-Apply-…` на Робочому столі й імпортує її `rollback.reg` (з підтвердженням і UAC); повертає **лише реєстр**, не Appx;
 - кнопка **Close** — вийти.
 
 Важливо: GUI **не містить власної логіки політик**. Він читає каталог рушія (`-ExportCatalog`), а вибір передає назад через тимчасовий `-ConfigPath`-конфіг. Тобто єдиним джерелом істини лишається `Win11-25H2-CalmMode.ps1`. Залежностей немає — Windows Forms входить у Windows PowerShell 5.1.
 
 > Порада: спершу **Run Audit**, перегляньте звіт, і лише потім **Apply**. Як і для CLI, безпечніше тестувати у VM.
+
+---
+
+## Перевірка цілісності та підпис
+
+Основний механізм перевірки — **SHA256** (файли `checksums.txt` і `<zip>.sha256` поруч із релізним архівом, генеруються `New-ReleaseArchive.ps1`).
+
+Опціонально скрипти можна підписати власним **Authenticode**-сертифікатом (репозиторій сертифіката не містить — самопідписаний дає довіру лише на машинах, які йому довіряють):
+
+```powershell
+# Підписати своїм сертифікатом зі сховища (потрібен code-signing cert)
+.\Sign-CalmMode.ps1 -Thumbprint <CERT_THUMBPRINT>
+
+# Перевірити підпис
+Get-AuthenticodeSignature .\Win11-25H2-CalmMode.ps1 | Format-List Status, SignerCertificate
+```
 
 ---
 
