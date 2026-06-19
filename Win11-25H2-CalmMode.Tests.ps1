@@ -302,6 +302,21 @@ Describe "Config mechanism (integration)" {
         }
     }
 
+    Context "-RestoreFrom validation (no import)" {
+        It "exits 1 when the path does not exist" {
+            & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -RestoreFrom "Z:\does\not\exist.reg" *> $null
+            $LASTEXITCODE | Should -Be 1
+        }
+        It "exits 1 when the folder contains no .reg file" {
+            $empty = Join-Path $env:TEMP ("calm-empty-" + [Guid]::NewGuid().ToString("N"))
+            New-Item -ItemType Directory -Path $empty -Force | Out-Null
+            & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -RestoreFrom $empty *> $null
+            $code = $LASTEXITCODE
+            Remove-Item -Recurse -Force $empty -ErrorAction SilentlyContinue
+            $code | Should -Be 1
+        }
+    }
+
     Context "config errors" {
         It "exits with code 1 on a missing config path" {
             & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -ConfigPath "Z:\does\not\exist.json" -NoReport *> $null

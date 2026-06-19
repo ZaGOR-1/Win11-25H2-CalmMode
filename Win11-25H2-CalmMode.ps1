@@ -78,6 +78,16 @@ param(
     # the same report, so you can confirm the values actually landed. Ignored unless Apply.
     [switch]$ThenVerify,
 
+    # Import a previously generated rollback.reg to undo registry changes. Accepts either a
+    # report folder (the rollback.reg inside it is used) or a direct .reg file. Requires
+    # Administrator. Restores REGISTRY only - it does NOT bring back removed Appx packages.
+    [string]$RestoreFrom = "",
+
+    # Opt-in system change: if System Protection is off for the system drive, enable it
+    # before creating the restore point (otherwise the restore point is silently skipped).
+    # Only takes effect in Apply mode. Off by default.
+    [switch]$EnableSystemProtection,
+
     [switch]$SkipRestorePoint,
     [switch]$NoAppCleanup,
     [switch]$NoRestartExplorer
@@ -262,8 +272,9 @@ if ($Mode -eq "Apply" -and -not $script:CurrentUserIsAdmin) {
     exit 1
 }
 
-if ($Mode -ne "Apply" -and -not $script:CurrentUserIsAdmin -and -not $ExportCatalog) {
+if ($Mode -ne "Apply" -and -not $script:CurrentUserIsAdmin -and -not $ExportCatalog -and [string]::IsNullOrWhiteSpace($RestoreFrom)) {
     # -ExportCatalog must emit only JSON on stdout (the GUI parses it), so stay silent here.
+    # -RestoreFrom prints its own admin error, so skip this generic note for it too.
     Write-Host "WARNING: You are not running as Administrator. Audit/Verify can continue, but some HKLM/Appx checks may be incomplete." -ForegroundColor Yellow
 }
 
@@ -320,8 +331,9 @@ if ($script:NoReport -and $Mode -eq "Apply") {
     $script:NoReport = $false
 }
 
-# -ExportCatalog is a pure read-only dump: never create a folder or transcript for it.
-if ($ExportCatalog) { $script:NoReport = $true }
+# -ExportCatalog (pure dump) and -RestoreFrom (a standalone restore op) do not need a
+# report folder or transcript.
+if ($ExportCatalog -or -not [string]::IsNullOrWhiteSpace($RestoreFrom)) { $script:NoReport = $true }
 
 if ($script:NoReport) {
     $script:ReportDir = ""
@@ -872,6 +884,65 @@ function Write-RollbackRegFile {
     }
 }
 
+function Invoke-RestoreFromBackup {
+    # Undo registry changes by importing a previously generated rollback.reg. -Source is a
+    # report folder (its rollback.reg is used) or a direct .reg file. Returns an exit code.
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([int])]
+    param([Parameter(Mandatory = $true)][string]$Source)
+
+    Write-Section "Restore from rollback.reg"
+
+    if (-not (Test-Path -LiteralPath $Source)) {
+        Write-Host "ERROR: -RestoreFrom path not found: $Source" -ForegroundColor Red
+        return 1
+    }
+
+    # Accept either a report folder (find rollback.reg inside) or a direct .reg file.
+    $item = Get-Item -LiteralPath $Source
+    if ($item.PSIsContainer) {
+        $regItem = Get-ChildItem -LiteralPath $Source -Filter "rollback.reg" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $regItem) {
+            $regItem = Get-ChildItem -LiteralPath $Source -Filter "*.reg" -ErrorAction SilentlyContinue | Select-Object -First 1
+        }
+        if (-not $regItem) {
+            Write-Host "ERROR: No rollback.reg (or any .reg) found in folder: $Source" -ForegroundColor Red
+            return 1
+        }
+        $regPath = $regItem.FullName
+    } else {
+        $regPath = $item.FullName
+    }
+
+    if (-not $script:CurrentUserIsAdmin) {
+        Write-Host "ERROR: -RestoreFrom requires Administrator (it imports HKLM registry keys)." -ForegroundColor Red
+        return 1
+    }
+
+    Write-Host "About to import registry from:" -ForegroundColor Cyan
+    Write-Host "  $regPath" -ForegroundColor Yellow
+    Write-Host "This restores REGISTRY values only. It does NOT bring back removed Appx packages." -ForegroundColor DarkYellow
+
+    if (-not $PSCmdlet.ShouldProcess($regPath, "Import registry (reg import)")) {
+        Write-Host "Restore skipped (-WhatIf/-Confirm declined). Nothing imported." -ForegroundColor DarkYellow
+        return 0
+    }
+
+    try {
+        $proc = Start-Process -FilePath "reg.exe" -ArgumentList @("import", "`"$regPath`"") -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -eq 0) {
+            Write-Host "Registry restore completed from: $regPath" -ForegroundColor Green
+            Write-Host "A reboot is recommended so all restored values take effect." -ForegroundColor Cyan
+            return 0
+        }
+        Write-Host "ERROR: 'reg import' failed (exit $($proc.ExitCode))." -ForegroundColor Red
+        return 1
+    } catch {
+        Write-Host "ERROR: 'reg import' failed: $($_.Exception.Message)" -ForegroundColor Red
+        return 1
+    }
+}
+
 function Invoke-RestorePoint {
     if ($Mode -ne "Apply") { return }
     if ($SkipRestorePoint) {
@@ -884,6 +955,19 @@ function Invoke-RestorePoint {
     if (-not $PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Create System Restore point")) {
         Add-Result "Preflight" "Restore point" "Skipped" "" "" "" "" "Official" "Supported" "Skipped by -WhatIf/-Confirm."
         return
+    }
+
+    # Opt-in: turn System Protection on for the system drive so the checkpoint is not
+    # silently skipped. This is a real system change, hence gated behind the explicit flag.
+    if ($EnableSystemProtection) {
+        try {
+            Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction Stop
+            Add-Result "Preflight" "System Protection" "Changed" "Off" "Enabled" "" "" "Official" "Supported" "Enabled System Protection on $env:SystemDrive via -EnableSystemProtection."
+            Write-Host "System Protection enabled on $env:SystemDrive (-EnableSystemProtection)." -ForegroundColor Green
+        } catch {
+            Add-Result "Preflight" "System Protection" "Warning" "" "Enabled" "" "" "Official" "Supported" "Could not enable System Protection: $($_.Exception.Message)"
+            Write-Host "WARNING: Could not enable System Protection: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
     }
 
     # Windows throttles restore points to one per 24h by default via
@@ -1650,6 +1734,13 @@ $resultsHtml
 # Wrap the whole run so the transcript is always stopped, even on an unexpected
 # terminating error mid-run (otherwise the log file stays open for the session).
 try {
+    # -RestoreFrom short-circuits everything: undo registry changes from a rollback.reg,
+    # then exit with that operation's code. Independent of -Mode.
+    if (-not [string]::IsNullOrWhiteSpace($RestoreFrom)) {
+        $restoreCode = Invoke-RestoreFromBackup -Source $RestoreFrom
+        exit $restoreCode
+    }
+
     # -ExportCatalog short-circuits everything: capture each block's real on/off state,
     # then force all blocks on so every tweak is registered, build the full catalog, and
     # print it. Nothing is read from or written to the system beyond version/edition info.

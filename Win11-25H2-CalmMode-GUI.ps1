@@ -139,9 +139,9 @@ $blockTitles = @{
 # ------------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Win11 25H2 Calm Mode v$($catalog.ScriptVersion) - configuration"
-$form.Size = New-Object System.Drawing.Size(820, 680)
+$form.Size = New-Object System.Drawing.Size(940, 680)
 $form.StartPosition = "CenterScreen"
-$form.MinimumSize = New-Object System.Drawing.Size(640, 480)
+$form.MinimumSize = New-Object System.Drawing.Size(720, 480)
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
 
@@ -249,13 +249,14 @@ function Get-ActionButton {
 
 $btnSelectAll = Get-ActionButton -Text "Select all" -X 10 -Width 84
 $btnSelectNone = Get-ActionButton -Text "Select none" -X 98 -Width 84
-$btnSave = Get-ActionButton -Text "Save config..." -X 186 -Width 96
-$btnLoad = Get-ActionButton -Text "Load config..." -X 286 -Width 96
-$btnAudit = Get-ActionButton -Text "Run Audit (safe)" -X 398 -Width 132
-$btnApply = Get-ActionButton -Text "Apply..." -X 534 -Width 104
-$btnClose = Get-ActionButton -Text "Close" -X 642 -Width 90
+$btnSave = Get-ActionButton -Text "Save config..." -X 186 -Width 92
+$btnLoad = Get-ActionButton -Text "Load config..." -X 282 -Width 92
+$btnAudit = Get-ActionButton -Text "Run Audit (safe)" -X 388 -Width 120
+$btnApply = Get-ActionButton -Text "Apply..." -X 512 -Width 92
+$btnUndo = Get-ActionButton -Text "Undo last Apply" -X 608 -Width 120
+$btnClose = Get-ActionButton -Text "Close" -X 732 -Width 80
 
-$panel.Controls.AddRange(@($btnSelectAll, $btnSelectNone, $btnSave, $btnLoad, $btnAudit, $btnApply, $btnClose))
+$panel.Controls.AddRange(@($btnSelectAll, $btnSelectNone, $btnSave, $btnLoad, $btnAudit, $btnApply, $btnUndo, $btnClose))
 
 # Status line.
 $status = New-Object System.Windows.Forms.Label
@@ -526,6 +527,40 @@ $btnApply.Add_Click({
         "Confirm Apply", "YesNo", "Warning")
     if ($answer -eq "Yes") {
         Invoke-Engine -Mode "Apply"
+    }
+})
+
+$btnUndo.Add_Click({
+    # Find the most recent Apply report folder on the Desktop and import its rollback.reg.
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $dir = Get-ChildItem -LiteralPath $desktop -Directory -Filter "Win11-25H2-CalmMode-v*-Apply-*" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $dir) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "No Apply report folder found on the Desktop to undo.",
+            "Win11 25H2 Calm Mode", "OK", "Information") | Out-Null
+        return
+    }
+    $answer = [System.Windows.Forms.MessageBox]::Show(
+        "Undo will import rollback.reg from:" + [Environment]::NewLine + $dir.Name + [Environment]::NewLine + [Environment]::NewLine +
+        "This restores REGISTRY values only - it does NOT bring back removed Appx packages." + [Environment]::NewLine +
+        "Requires Administrator (you will see a UAC prompt)." + [Environment]::NewLine + [Environment]::NewLine +
+        "Continue?",
+        "Confirm Undo last Apply", "YesNo", "Warning")
+    if ($answer -ne "Yes") { return }
+
+    $argList = @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", "`"$EnginePath`"",
+        "-RestoreFrom", "`"$($dir.FullName)`""
+    )
+    try {
+        $status.Text = "Launching elevated restore... approve the UAC prompt."
+        Start-Process -FilePath $script:PowerShellExe -ArgumentList $argList -Verb RunAs | Out-Null
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Could not start the restore.`n`n$($_.Exception.Message)",
+            "Win11 25H2 Calm Mode", "OK", "Error") | Out-Null
     }
 })
 
