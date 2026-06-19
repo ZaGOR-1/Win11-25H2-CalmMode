@@ -107,4 +107,35 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
             $res.CanApply | Should -Be $true
         }
     }
+
+    Context "Get-Applicability UBR gating" {
+        BeforeAll {
+            $script:BuildNumber = 26100
+            $script:EditionGroup = "Pro"
+        }
+
+        It "blocks when UBR is known and below MinUBR" {
+            $script:UBR = 3000
+            $setting = [pscustomobject]@{ MinBuild = 26100; MinUBR = 3915; Editions = @("Pro"); ApplyIfMaybeUnsupported = $false }
+            $res = Get-Applicability -Setting $setting
+            $res.Status | Should -Be "UnsupportedBuild"
+            $res.CanApply | Should -Be $false
+        }
+
+        It "allows when UBR meets MinUBR" {
+            $script:UBR = 4000
+            $setting = [pscustomobject]@{ MinBuild = 26100; MinUBR = 3915; Editions = @("Pro"); ApplyIfMaybeUnsupported = $false }
+            $res = Get-Applicability -Setting $setting
+            $res.Status | Should -Be "Supported"
+            $res.CanApply | Should -Be $true
+        }
+
+        It "fails open (does not block) when UBR is unknown (0)" {
+            $script:UBR = 0
+            $setting = [pscustomobject]@{ MinBuild = 26100; MinUBR = 3915; Editions = @("Pro"); ApplyIfMaybeUnsupported = $false }
+            $res = Get-Applicability -Setting $setting
+            $res.Status | Should -Be "Supported"
+            $res.CanApply | Should -Be $true
+        }
+    }
 }

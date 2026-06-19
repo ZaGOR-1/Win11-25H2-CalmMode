@@ -101,10 +101,24 @@ $script:RegistrySettings = New-Object 'System.Collections.Generic.List[object]'
 $script:RollbackEntries = New-Object 'System.Collections.Generic.List[object]'
 
 $script:CurrentUserIsAdmin = $false
+$script:CurrentIdentityName = ""
 try {
-    $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $script:CurrentIdentityName = $identity.Name
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     $script:CurrentUserIsAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-} catch {}
+} catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
+
+# Interactive console user. When the script runs under a different (for example, a
+# separate elevated) account, HKCU points at THAT account's hive, so per-user policies
+# would never reach the signed-in user's profile. Detect this so preflight can warn
+# instead of silently writing per-user tweaks to the wrong hive.
+$script:InteractiveUser = ""
+try {
+    $script:InteractiveUser = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).UserName
+} catch {
+    $script:InteractiveUser = ""
+}
 
 if ($Mode -eq "Apply" -and -not $script:CurrentUserIsAdmin) {
     Write-Host "ERROR: Apply mode requires Administrator. Re-run Windows PowerShell as Administrator." -ForegroundColor Red
@@ -119,10 +133,11 @@ $script:CV = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersio
 $script:ProductName = $script:CV.ProductName
 $script:DisplayVersion = $script:CV.DisplayVersion
 $script:BuildNumber = 0
-$script:UBR = $script:CV.UBR
+$script:UBR = 0
 $script:EditionId = $script:CV.EditionID
 
 try { $script:BuildNumber = [int]$script:CV.CurrentBuild } catch { $script:BuildNumber = 0 }
+try { $script:UBR = [int]$script:CV.UBR } catch { $script:UBR = 0 }
 
 function Get-EditionGroup {
     param([string]$EditionId)
@@ -310,7 +325,10 @@ function Get-Applicability {
         }
     }
 
-    if ($Setting.MinBuild -eq $script:BuildNumber -and $Setting.MinUBR -gt 0 -and $script:UBR -lt $Setting.MinUBR) {
+    # Only gate on UBR when it is actually known (> 0). If the UBR could not be read,
+    # fail open (treat as applicable) rather than wrongly reporting UnsupportedBuild,
+    # because $null/0 would otherwise always compare as less than MinUBR.
+    if ($Setting.MinBuild -eq $script:BuildNumber -and $Setting.MinUBR -gt 0 -and $script:UBR -gt 0 -and $script:UBR -lt $Setting.MinUBR) {
         return [pscustomobject]@{
             Status = "UnsupportedBuild"
             Message = "Requires build $($Setting.MinBuild).$($Setting.MinUBR)+; detected build $script:BuildNumber.$script:UBR."
@@ -658,7 +676,7 @@ function Invoke-RestorePoint {
         if (-not (Test-Path $srKey)) { New-Item -Path $srKey -Force | Out-Null }
         New-ItemProperty -Path $srKey -Name "SystemRestorePointCreationFrequency" -Value 0 -PropertyType DWord -Force | Out-Null
         $freqChanged = $true
-    } catch {}
+    } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
 
     try {
         Checkpoint-Computer -Description "Before $script:ScriptTitle" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
@@ -682,7 +700,7 @@ function Invoke-RestorePoint {
                     Remove-ItemProperty -Path $srKey -Name "SystemRestorePointCreationFrequency" -ErrorAction SilentlyContinue
                 }
             }
-        } catch {}
+        } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
     }
 }
 
@@ -698,19 +716,19 @@ function Get-AppxMatches {
             $current += Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object {
                 $_.Name -like $pattern -or $_.PackageFullName -like $pattern
             }
-        } catch {}
+        } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
 
         try {
             $allUsers += Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object {
                 $_.Name -like $pattern -or $_.PackageFullName -like $pattern
             }
-        } catch {}
+        } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
 
         try {
             $provisioned += Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
                 $_.DisplayName -like $pattern -or $_.PackageName -like $pattern
             }
-        } catch {}
+        } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
     }
 
     return [pscustomobject]@{
@@ -778,7 +796,7 @@ function Invoke-AppCleanupTarget {
                 try {
                     Write-Host "Attempting all-users Appx removal: $($pkg.Name)" -ForegroundColor Yellow
                     Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
-                } catch {}
+                } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
             }
 
             foreach ($prov in $appxMatches.Provisioned) {
@@ -899,6 +917,20 @@ function Add-PreflightResults {
     $adminStatus = if ($script:CurrentUserIsAdmin) { "Compliant" } else { "Warning" }
     Add-Result "Preflight" "Administrator" $adminStatus $script:CurrentUserIsAdmin "True for Apply" "" "" "Official" "Detected" "Apply mode requires Administrator."
     Write-ResultLine $adminStatus "Preflight" "Administrator" $script:CurrentUserIsAdmin "True for Apply" ""
+
+    # Per-user (HKCU) tweaks land in the hive of whoever runs the script. If that is not
+    # the interactive user (for example, a separate elevated account), those tweaks miss
+    # the signed-in profile while the report would still say Changed. Warn explicitly.
+    $hkcuStatus = "Compliant"
+    $hkcuMsg = "Per-user (HKCU) settings apply to the account running this script: $script:CurrentIdentityName."
+    if (-not [string]::IsNullOrWhiteSpace($script:InteractiveUser) -and
+        -not [string]::IsNullOrWhiteSpace($script:CurrentIdentityName) -and
+        $script:InteractiveUser -ne $script:CurrentIdentityName) {
+        $hkcuStatus = "Warning"
+        $hkcuMsg = "Script identity ($script:CurrentIdentityName) differs from the interactive user ($script:InteractiveUser). Per-user (HKCU) settings will be written to '$script:CurrentIdentityName', NOT the signed-in user. Run as your own account with elevation so HKCU tweaks reach the right profile."
+    }
+    Add-Result "Preflight" "Per-user hive (HKCU)" $hkcuStatus $script:CurrentIdentityName $script:InteractiveUser "" "" "Official" "Detected" $hkcuMsg
+    Write-ResultLine $hkcuStatus "Preflight" "Per-user hive (HKCU)" $script:CurrentIdentityName $script:InteractiveUser $hkcuMsg
 }
 
 function Initialize-RegistrySettings {
@@ -1292,4 +1324,4 @@ if ($Mode -eq "Apply") {
     Write-Host "or use the System Restore point created before Apply." -ForegroundColor Cyan
 }
 
-try { Stop-Transcript | Out-Null } catch {}
+try { Stop-Transcript | Out-Null } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
