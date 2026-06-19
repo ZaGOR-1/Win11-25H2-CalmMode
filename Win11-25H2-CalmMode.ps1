@@ -58,6 +58,10 @@ param(
     # because the registry backup and rollback.reg require the report folder.
     [switch]$NoReport,
 
+    # After writing reports, open the HTML report in the default browser. Opt-in; ignored
+    # when -NoReport is in effect (there is no HTML to open). Read-only convenience.
+    [switch]$OpenReport,
+
     # Optional JSON config that selects which blocks/tweaks run. Lets a config file
     # (or the GUI launcher) drive selection without editing the in-script toggles.
     # Schema: { "blocks": { "<BlockKey>": true|false, ... }, "disabledTweaks": ["<Path>\<Name>", ...] }
@@ -160,6 +164,31 @@ $script:BlockToggleMap = [ordered]@{
     "RemoveTeamsPersonal"     = "RemoveTeamsPersonal"
     "RemoveXboxApps"          = "RemoveXboxApps"
     "RemoveOneDrive"          = "RemoveOneDrive"
+}
+
+# Friendly, human-readable block titles. Single source of truth: exported via
+# -ExportCatalog so the GUI shows these without maintaining its own copy (it keeps a
+# fallback only for older catalogs). Keys must match $script:BlockToggleMap.
+$script:BlockTitles = [ordered]@{
+    "WindowsAI"               = "Windows AI / Recall / Copilot"
+    "Widgets"                 = "Widgets / News and Interests"
+    "CloudContent"            = "Cloud Content / ads / recommendations"
+    "Privacy"                 = "Privacy / diagnostics / advertising"
+    "Search"                  = "Search"
+    "StartTaskbar"            = "Start menu / Taskbar / Explorer"
+    "WindowsUpdate"           = "Windows Update"
+    "DeliveryOptimization"    = "Delivery Optimization (no P2P)"
+    "ManualWindowsUpdateMode" = "Manual Windows Update mode (AUOptions=2)"
+    "TargetReleaseVersionPin" = "Pin feature version (can block updates)"
+    "EdgeQuietMode"           = "Microsoft Edge quiet mode"
+    "DeveloperMode"           = "Developer Mode / sideloading (security trade-off)"
+    "LongPaths"               = "Win32 long paths"
+    "FastStartupDisable"      = "Disable Fast Startup"
+    "Gaming"                  = "Gaming (Game DVR / Game Bar)"
+    "RemoveCopilotApp"        = "Appx cleanup: remove Copilot app (opt-in)"
+    "RemoveTeamsPersonal"     = "Appx cleanup: remove Teams personal (opt-in)"
+    "RemoveXboxApps"          = "Appx cleanup: remove Xbox apps (opt-in)"
+    "RemoveOneDrive"          = "Appx cleanup: uninstall OneDrive (opt-in)"
 }
 
 # Tweak keys ("$Path\$Name") that the config asked to skip. Compared case-insensitively.
@@ -382,6 +411,18 @@ function Get-KnownStatuses {
     )
 }
 
+function Get-AttentionStatuses {
+    # Single source of truth for "needs attention" statuses: everything that is not
+    # already compliant/informational. Used by the HTML report (Write-Reports), exposed
+    # through -ExportCatalog, and consumed by the GUI results window so the engine and the
+    # GUI never drift apart on which rows deserve highlighting.
+    return @(
+        "Warning", "VerifyFail", "Error",
+        "RequiresVerification", "MaybeIgnoredOnEdition",
+        "WouldChange", "WouldRemove", "UnsupportedBuild"
+    )
+}
+
 function Add-Result {
     param(
         [string]$Category,
@@ -455,22 +496,49 @@ function Write-ResultLine {
     Write-Host ("[{0}] {1} :: {2} | current='{3}' desired='{4}' {5}" -f $Status, $Category, $Item, $cur, $des, $Message) -ForegroundColor $color
 }
 
+function Clear-RegKeyCache {
+    # Drop a path from the per-run Get-ItemProperty cache (C2). Call after any write to that
+    # path so the very next read (e.g. the Apply read-back verify) sees fresh data, never stale.
+    param([string]$Path)
+    if ($null -ne $script:RegKeyCache -and $script:RegKeyCache.ContainsKey($Path)) {
+        $script:RegKeyCache.Remove($Path) | Out-Null
+    }
+}
+
 function Get-RegValueSafe {
     param(
         [string]$Path,
         [string]$Name
     )
 
+    # C2: cache the whole key's properties per run. Many tweaks share a key (the
+    # ContentDeliveryManager block alone reads ~17 values from one key), so this avoids
+    # repeated Get-ItemProperty calls. Self-initializing so the function is also usable
+    # standalone (e.g. dot-sourced in tests). Writes invalidate via Clear-RegKeyCache.
+    if ($null -eq $script:RegKeyCache) { $script:RegKeyCache = @{} }
+
     try {
-        if (-not (Test-Path $Path)) {
+        $props = $null
+        if ($script:RegKeyCache.ContainsKey($Path)) {
+            $props = $script:RegKeyCache[$Path]
+        } else {
+            if (-not (Test-Path $Path)) {
+                # Cache the "missing key" result too ($null) so repeated misses are cheap.
+                $script:RegKeyCache[$Path] = $null
+                return [pscustomobject]@{ Exists = $false; Value = $null; Error = $null }
+            }
+            # Read the whole key and look the value up via PSObject so a missing
+            # value name does NOT raise a terminating error (which -Name would).
+            # That keeps the transcript clean: a missing value is a normal flow,
+            # not a logged "TerminatingError(Get-ItemProperty)" line.
+            $props = Get-ItemProperty -Path $Path -ErrorAction Stop
+            $script:RegKeyCache[$Path] = $props
+        }
+
+        if ($null -eq $props) {
             return [pscustomobject]@{ Exists = $false; Value = $null; Error = $null }
         }
 
-        # Read the whole key and look the value up via PSObject so a missing
-        # value name does NOT raise a terminating error (which -Name would).
-        # That keeps the transcript clean: a missing value is a normal flow,
-        # not a logged "TerminatingError(Get-ItemProperty)" line.
-        $props = Get-ItemProperty -Path $Path -ErrorAction Stop
         $member = $props.PSObject.Properties[$Name]
         if ($null -ne $member) {
             return [pscustomobject]@{ Exists = $true; Value = $member.Value; Error = $null }
@@ -488,12 +556,26 @@ function Test-ValueEquals {
         [string]$Type
     )
 
-    if ($Type -eq "DWord") {
-        # Use [long] (Int64), not [int]: REG_DWORD is an unsigned 32-bit value, so a desired
-        # value above 2147483647 would overflow Int32 and throw. Int64 holds the full range.
+    if ($Type -eq "DWord" -or $Type -eq "QWord") {
+        # Compare numerically via [long] (Int64): REG_DWORD/REG_QWORD are unsigned, so a value
+        # above Int32 max would overflow [int]. Int64 holds the full DWORD range and the common
+        # QWORD range. On overflow/parse failure, fall back to a non-equal result.
         try { return ([long]$A -eq [long]$B) } catch { return $false }
     }
 
+    if ($Type -eq "MultiString") {
+        # REG_MULTI_SZ is an ordered list of strings. Compare element-by-element (ordinal),
+        # treating $null as an empty list.
+        $arrA = if ($null -eq $A) { @() } else { @($A) }
+        $arrB = if ($null -eq $B) { @() } else { @($B) }
+        if ($arrA.Count -ne $arrB.Count) { return $false }
+        for ($i = 0; $i -lt $arrA.Count; $i++) {
+            if ([string]$arrA[$i] -cne [string]$arrB[$i]) { return $false }
+        }
+        return $true
+    }
+
+    # String and ExpandString: compare as strings (case-insensitive, matching -eq default).
     return ([string]$A -eq [string]$B)
 }
 
@@ -583,7 +665,7 @@ function Add-RegSetting {
         [Parameter(Mandatory=$true)][string]$Category,
         [Parameter(Mandatory=$true)][string]$Path,
         [Parameter(Mandatory=$true)][string]$Name,
-        [Parameter(Mandatory=$true)][ValidateSet("DWord", "String")][string]$Type,
+        [Parameter(Mandatory=$true)][ValidateSet("DWord", "String", "QWord", "ExpandString", "MultiString")][string]$Type,
         [Parameter(Mandatory=$true)][object]$Value,
         [Parameter(Mandatory=$true)][string]$Description,
         [int]$MinBuild = 0,
@@ -671,6 +753,15 @@ function Invoke-RegSetting {
         if ($applicability.Status -eq "UnsupportedBuild") {
             $status = "UnsupportedBuild"
             $msg = $applicability.Message
+        } elseif (-not $applicability.CanApply -and -not $equals) {
+            # This setting would be Skipped on Apply (for example, an edition-limited policy
+            # with ApplyIfMaybeUnsupported = $false). Reporting it as VerifyFail/WouldChange
+            # would be misleading - Apply never writes it - and in Verify it would wrongly
+            # drive exit code 2 after an otherwise clean Apply -ThenVerify. Report Skipped so
+            # read-only modes stay consistent with what Apply actually does. If the value
+            # already matches (set by something else) we leave the normal pass result.
+            $status = "Skipped"
+            $msg = "Not applicable to this Windows build/edition; not applied by this script, so not verified. $($applicability.Message)"
         }
 
         Add-Result $Setting.Category $Setting.Description $status $current $desired $Setting.Path $Setting.Name $Setting.Confidence $supportText $msg
@@ -717,12 +808,16 @@ function Invoke-RegSetting {
                 New-Item -Path $Setting.Path -Force | Out-Null
             }
 
-            if ($Setting.Type -eq "DWord") {
-                New-ItemProperty -Path $Setting.Path -Name $Setting.Name -Value ([int]$desired) -PropertyType DWord -Force | Out-Null
-            } elseif ($Setting.Type -eq "String") {
-                New-ItemProperty -Path $Setting.Path -Name $Setting.Name -Value ([string]$desired) -PropertyType String -Force | Out-Null
+            switch ($Setting.Type) {
+                "DWord"        { New-ItemProperty -Path $Setting.Path -Name $Setting.Name -Value ([int]$desired) -PropertyType DWord -Force | Out-Null }
+                "QWord"        { New-ItemProperty -Path $Setting.Path -Name $Setting.Name -Value ([long]$desired) -PropertyType QWord -Force | Out-Null }
+                "String"       { New-ItemProperty -Path $Setting.Path -Name $Setting.Name -Value ([string]$desired) -PropertyType String -Force | Out-Null }
+                "ExpandString" { New-ItemProperty -Path $Setting.Path -Name $Setting.Name -Value ([string]$desired) -PropertyType ExpandString -Force | Out-Null }
+                "MultiString"  { New-ItemProperty -Path $Setting.Path -Name $Setting.Name -Value ([string[]]$desired) -PropertyType MultiString -Force | Out-Null }
             }
 
+            # C2: the value just changed; drop the cached snapshot so the read-back below is fresh.
+            Clear-RegKeyCache -Path $Setting.Path
             $verify = Get-RegValueSafe -Path $Setting.Path -Name $Setting.Name
             $verifyOk = $false
             if ($verify.Exists) {
@@ -834,6 +929,33 @@ function Format-RegValueLine {
         $dwordVal = ([long]$Value) -band 0xffffffffL
         $dword = ('{0:x8}' -f $dwordVal)
         return "`"$escapedName`"=dword:$dword"
+    }
+
+    if ($Type -eq "QWord") {
+        # REG_QWORD in .reg is hex(b): eight little-endian bytes.
+        $bytes = [System.BitConverter]::GetBytes([long]$Value)  # already little-endian on Windows
+        $hex = ($bytes | ForEach-Object { '{0:x2}' -f $_ }) -join ','
+        return "`"$escapedName`"=hex(b):$hex"
+    }
+
+    if ($Type -eq "ExpandString") {
+        # REG_EXPAND_SZ in .reg is hex(2): UTF-16LE bytes of the string plus a NUL terminator.
+        $bytes = [System.Text.Encoding]::Unicode.GetBytes([string]$Value + "`0")
+        $hex = ($bytes | ForEach-Object { '{0:x2}' -f $_ }) -join ','
+        return "`"$escapedName`"=hex(2):$hex"
+    }
+
+    if ($Type -eq "MultiString") {
+        # REG_MULTI_SZ in .reg is hex(7): each string UTF-16LE + NUL, then a final NUL.
+        $items = if ($null -eq $Value) { @() } else { @($Value) }
+        $bytesList = New-Object 'System.Collections.Generic.List[byte]'
+        foreach ($s in $items) {
+            foreach ($b in [System.Text.Encoding]::Unicode.GetBytes([string]$s)) { $bytesList.Add($b) }
+            $bytesList.Add(0); $bytesList.Add(0)
+        }
+        $bytesList.Add(0); $bytesList.Add(0)
+        $hex = ($bytesList | ForEach-Object { '{0:x2}' -f $_ }) -join ','
+        return "`"$escapedName`"=hex(7):$hex"
     }
 
     # String (REG_SZ)
@@ -979,6 +1101,7 @@ function Invoke-RestorePoint {
     try {
         if (-not (Test-Path $srKey)) { New-Item -Path $srKey -Force | Out-Null }
         New-ItemProperty -Path $srKey -Name "SystemRestorePointCreationFrequency" -Value 0 -PropertyType DWord -Force | Out-Null
+        Clear-RegKeyCache -Path $srKey
         $freqChanged = $true
     } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
 
@@ -1003,6 +1126,7 @@ function Invoke-RestorePoint {
                 } else {
                     Remove-ItemProperty -Path $srKey -Name "SystemRestorePointCreationFrequency" -ErrorAction SilentlyContinue
                 }
+                Clear-RegKeyCache -Path $srKey
             }
         } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
     }
@@ -1303,6 +1427,33 @@ function Add-PreflightResults {
     }
     Add-Result "Preflight" "Pending reboot" $rebootStatus $rebootCurrent "None" "" "" "Official" "Detected" $rebootMsg
     Write-ResultLine $rebootStatus "Preflight" "Pending reboot" $rebootCurrent "None" $rebootMsg
+
+    # Record the effective run configuration so the report is reproducible: which blocks were
+    # enabled, which individual tweaks were disabled, and where that selection came from
+    # (-ConfigPath / -Skip / -Only / script defaults). Read-only; lands in CSV/JSON/HTML.
+    $enabledBlocks = New-Object System.Collections.Generic.List[string]
+    foreach ($entry in $script:BlockToggleMap.GetEnumerator()) {
+        if ([bool](Get-Variable -Name $entry.Value -Scope Script -ValueOnly -ErrorAction SilentlyContinue)) {
+            $enabledBlocks.Add($entry.Key)
+        }
+    }
+    $disabledTweakList = New-Object System.Collections.Generic.List[string]
+    foreach ($k in $script:DisabledTweaks) { $disabledTweakList.Add([string]$k) }
+
+    $selSource = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) { $selSource.Add("-ConfigPath") }
+    if ($Only.Count -gt 0) { $selSource.Add("-Only") }
+    if ($Skip.Count -gt 0) { $selSource.Add("-Skip") }
+    if ($selSource.Count -eq 0) { $selSource.Add("script defaults") }
+
+    $runCfgCurrent = "$($enabledBlocks.Count)/$($script:BlockToggleMap.Count) blocks enabled; $($disabledTweakList.Count) tweak(s) disabled"
+    $enabledText = if ($enabledBlocks.Count -gt 0) { ($enabledBlocks -join ", ") } else { "(none)" }
+    $runCfgMsg = "Selection source: $($selSource -join ', '). Enabled blocks: $enabledText."
+    if ($disabledTweakList.Count -gt 0) {
+        $runCfgMsg += " Disabled tweaks: $($disabledTweakList -join ', ')."
+    }
+    Add-Result "Preflight" "Run configuration" "Compliant" $runCfgCurrent "" "" "" "Official" "Detected" $runCfgMsg
+    Write-ResultLine "Compliant" "Preflight" "Run configuration" $runCfgCurrent "" $runCfgMsg
 }
 
 function Initialize-RegistrySettings {
@@ -1652,8 +1803,8 @@ function Write-Reports {
     $summaryHtml = $summary | ConvertTo-Html -Fragment -PreContent "<h2>Status summary</h2>"
 
     # "Needs attention" at the top: everything that is not already compliant/informational.
-    $attentionStatuses = @("Warning", "VerifyFail", "Error", "RequiresVerification",
-        "MaybeIgnoredOnEdition", "WouldChange", "WouldRemove", "UnsupportedBuild")
+    # Single source of truth shared with the GUI (via -ExportCatalog) so they never drift.
+    $attentionStatuses = Get-AttentionStatuses
     $attentionRows = $script:Results | Where-Object { $attentionStatuses -contains $_.Status } | Sort-Object Category, Item
     if ($attentionRows) {
         $attentionHtml = $attentionRows |
@@ -1678,6 +1829,7 @@ th, td { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; }
 th { background: #f3f3f3; text-align: left; }
 tr:nth-child(even) { background: #fafafa; }
 .note { background: #fff7d6; padding: 10px; border: 1px solid #f0d36a; border-radius: 6px; }
+.note.warn { background: #fde0e0; border-color: #e0a0a0; margin-top: 10px; }
 .ok { color: #137333; font-weight: 600; }
 </style>
 "@
@@ -1685,6 +1837,16 @@ tr:nth-child(even) { background: #fafafa; }
     $encTitle = [System.Net.WebUtility]::HtmlEncode($script:ScriptTitle)
     $encProduct = [System.Net.WebUtility]::HtmlEncode($script:ProductName)
     $encReportDir = [System.Net.WebUtility]::HtmlEncode($script:ReportDir)
+
+    # Pending-reboot banner: derive from the preflight result so it matches what the run
+    # reported. A pending reboot means some policies will not fully take effect until restart,
+    # so surface it prominently (many policies only apply after a reboot, affecting Verify).
+    $rebootRow = $script:Results | Where-Object { $_.Category -eq "Preflight" -and $_.Item -eq "Pending reboot" } | Select-Object -First 1
+    $rebootBanner = ""
+    if ($rebootRow -and $rebootRow.Status -eq "Warning") {
+        $encReboot = [System.Net.WebUtility]::HtmlEncode([string]$rebootRow.Message)
+        $rebootBanner = "<div class=`"note warn`"><b>Pending reboot:</b> $encReboot</div>"
+    }
 
     $html = @"
 <!DOCTYPE html>
@@ -1709,6 +1871,7 @@ Report folder: <b>$encReportDir</b>
 <div class="note">
 <b>Important:</b> Registry verification proves that the value was written/read successfully. It cannot always prove that Windows UI fully honors a policy, especially for edition-limited or build-dependent policies. Such entries are marked as BestEffort, DeprecatedOrLegacy, UISetting, or MaybeIgnoredOnEdition.
 </div>
+$rebootBanner
 $attentionHtml
 $summaryHtml
 $confidenceHtml
@@ -1722,6 +1885,15 @@ $resultsHtml
         Write-Host "HTML report: $htmlPath" -ForegroundColor Green
         Write-Host "CSV report:  $csvPath" -ForegroundColor Green
         Write-Host "JSON report: $jsonPath" -ForegroundColor Green
+
+        # -OpenReport: open the HTML in the default browser (opt-in convenience). Best-effort.
+        if ($OpenReport) {
+            try {
+                Start-Process -FilePath $htmlPath | Out-Null
+            } catch {
+                Write-Host "WARNING: Could not open the report: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+        }
     } catch {
         Write-Host "WARNING: HTML report failed: $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -1754,11 +1926,15 @@ try {
         Initialize-RegistrySettings
 
         # Report blocks with their captured default state, not the forced-on value.
+        # Title comes from the engine's single source ($script:BlockTitles) so the GUI does
+        # not have to maintain its own copy (it keeps only a fallback for older catalogs).
         $blocks = foreach ($entry in $script:BlockToggleMap.GetEnumerator()) {
+            $blockTitle = if ($script:BlockTitles.Contains($entry.Key)) { $script:BlockTitles[$entry.Key] } else { $entry.Key }
             [pscustomobject]@{
                 Key     = $entry.Key
                 Toggle  = $entry.Value
                 Enabled = [bool]$script:BlockDefaults[$entry.Key]
+                Title   = $blockTitle
             }
         }
         $tweaks = foreach ($s in $script:RegistrySettings) {
@@ -1769,12 +1945,13 @@ try {
             }
         }
         [pscustomobject]@{
-            ScriptVersion = $script:ScriptVersion
-            Build         = $script:BuildNumber
-            UBR           = $script:UBR
-            EditionGroup  = $script:EditionGroup
-            Blocks        = @($blocks)
-            Tweaks        = @($tweaks)
+            ScriptVersion     = $script:ScriptVersion
+            Build             = $script:BuildNumber
+            UBR               = $script:UBR
+            EditionGroup      = $script:EditionGroup
+            Blocks            = @($blocks)
+            Tweaks            = @($tweaks)
+            AttentionStatuses = @(Get-AttentionStatuses)
         } | ConvertTo-Json -Depth 6
         exit 0
     }

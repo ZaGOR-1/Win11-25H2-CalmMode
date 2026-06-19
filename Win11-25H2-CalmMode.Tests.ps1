@@ -53,6 +53,21 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
         It "encodes a negative DWord as its unsigned 32-bit pattern" {
             Format-RegValueLine -Name "Neg" -Type "DWord" -Value -1 -Delete $false | Should -Be '"Neg"=dword:ffffffff'
         }
+        It "encodes a QWord as eight little-endian bytes (hex(b))" {
+            Format-RegValueLine -Name "Q" -Type "QWord" -Value 1 -Delete $false | Should -Be '"Q"=hex(b):01,00,00,00,00,00,00,00'
+        }
+        It "encodes an ExpandString as UTF-16LE + NUL (hex(2))" {
+            Format-RegValueLine -Name "E" -Type "ExpandString" -Value "%TEMP%" -Delete $false |
+                Should -Be '"E"=hex(2):25,00,54,00,45,00,4d,00,50,00,25,00,00,00'
+        }
+        It "encodes a MultiString as NUL-terminated UTF-16LE + final NUL (hex(7))" {
+            Format-RegValueLine -Name "M" -Type "MultiString" -Value @("a", "b") -Delete $false |
+                Should -Be '"M"=hex(7):61,00,00,00,62,00,00,00,00,00'
+        }
+        It "formats a Delete for the new types the same way" {
+            Format-RegValueLine -Name "Q" -Type "QWord" -Value 1 -Delete $true | Should -Be '"Q"=-'
+            Format-RegValueLine -Name "M" -Type "MultiString" -Value @("a") -Delete $true | Should -Be '"M"=-'
+        }
     }
 
     Context "Get-EditionGroup" {
@@ -87,6 +102,20 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
         It "compares large DWords without Int32 overflow" {
             Test-ValueEquals -A 4294967295 -B 4294967295 -Type "DWord" | Should -Be $true
             Test-ValueEquals -A 0 -B 4294967295 -Type "DWord" | Should -Be $false
+        }
+        It "compares QWords numerically" {
+            Test-ValueEquals -A 5000000000 -B "5000000000" -Type "QWord" | Should -Be $true
+            Test-ValueEquals -A 1 -B 2 -Type "QWord" | Should -Be $false
+        }
+        It "compares ExpandString as strings" {
+            Test-ValueEquals -A "%TEMP%" -B "%TEMP%" -Type "ExpandString" | Should -Be $true
+            Test-ValueEquals -A "%TEMP%" -B "%TMP%" -Type "ExpandString" | Should -Be $false
+        }
+        It "compares MultiString element-by-element and order-sensitively" {
+            Test-ValueEquals -A @("a", "b") -B @("a", "b") -Type "MultiString" | Should -Be $true
+            Test-ValueEquals -A @("a", "b") -B @("b", "a") -Type "MultiString" | Should -Be $false
+            Test-ValueEquals -A @("a") -B @("a", "b") -Type "MultiString" | Should -Be $false
+            Test-ValueEquals -A $null -B @() -Type "MultiString" | Should -Be $true
         }
     }
 
@@ -169,6 +198,29 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
         }
     }
 
+    Context "Get-AttentionStatuses" {
+        It "contains the highlight-worthy statuses" {
+            $att = Get-AttentionStatuses
+            foreach ($s in "Warning", "VerifyFail", "Error", "WouldChange", "WouldRemove", "UnsupportedBuild") {
+                $att | Should -Contain $s
+            }
+        }
+        It "has no duplicate entries" {
+            $att = Get-AttentionStatuses
+            ($att | Sort-Object -Unique).Count | Should -Be $att.Count
+        }
+        It "is a subset of the known statuses" {
+            $known = Get-KnownStatuses
+            foreach ($s in Get-AttentionStatuses) { $known | Should -Contain $s }
+        }
+        It "does not flag compliant/informational statuses" {
+            $att = Get-AttentionStatuses
+            foreach ($s in "Compliant", "AlreadyConfigured", "Changed", "VerifyOK", "Skipped") {
+                $att | Should -Not -Contain $s
+            }
+        }
+    }
+
     Context "Get-ResultSummary" {
         It "counts results grouped by status" {
             $script:Results = New-Object 'System.Collections.Generic.List[object]'
@@ -187,6 +239,118 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
             ($r.Pending -is [bool]) | Should -Be $true
             ($r.PSObject.Properties.Name -contains "Reasons") | Should -Be $true
             if (-not $r.Pending) { @($r.Reasons).Count | Should -Be 0 }
+        }
+    }
+
+    Context "Get-RegValueSafe missing value (no terminating error)" {
+        It "reports Exists=false and Error=null for a missing value under an existing key" {
+            # The key exists (read at startup), but this value name will not.
+            $res = Get-RegValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -Name "CalmModeNoSuchValue_$([Guid]::NewGuid().ToString('N'))"
+            $res.Exists | Should -Be $false
+            $res.Error | Should -Be $null
+        }
+        It "reports Exists=false and Error=null for a non-existent key" {
+            $res = Get-RegValueSafe -Path "HKLM:\SOFTWARE\CalmModeNoSuchKey_$([Guid]::NewGuid().ToString('N'))" -Name "Whatever"
+            $res.Exists | Should -Be $false
+            $res.Error | Should -Be $null
+        }
+    }
+
+    Context "Invoke-RegSetting read-only applicability (A1 regression)" {
+        BeforeAll {
+            # Pro build so an Enterprise-only tweak is MaybeIgnoredOnEdition.
+            $script:BuildNumber = 22621
+            $script:UBR = 0
+            $script:EditionGroup = "Pro"
+            # Invoke-RegSetting consults this set; it must exist in this scope.
+            $script:DisabledTweaks = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+        }
+
+        # Build a setting whose target value does NOT exist, so equals is false.
+        function Get-TestSetting {
+            param([bool]$ApplyIfMaybeUnsupported)
+            $name = "CalmModeTestValue_$([Guid]::NewGuid().ToString('N'))"
+            [pscustomobject]@{
+                Key = "HKLM:\SOFTWARE\CalmModeNoSuchKey\$name"
+                Category = "TestCat"; Path = "HKLM:\SOFTWARE\CalmModeNoSuchKey"; Name = $name
+                Type = "DWord"; Value = 1; Description = "Edition-limited test tweak"
+                MinBuild = 22000; Editions = @("Enterprise"); Confidence = "Official"
+                Note = "test"; ApplyIfMaybeUnsupported = $ApplyIfMaybeUnsupported; MinUBR = 0
+            }
+        }
+
+        It "Verify marks an edition-skipped tweak (CanApply=false) as Skipped, not VerifyFail" {
+            $script:Mode = "Verify"
+            $script:Results = New-Object 'System.Collections.Generic.List[object]'
+            Invoke-RegSetting -Setting (Get-TestSetting -ApplyIfMaybeUnsupported $false)
+            $script:Results[-1].Status | Should -Be "Skipped"
+        }
+
+        It "Verify still reports VerifyFail for a missing applicable tweak (CanApply=true)" {
+            $script:Mode = "Verify"
+            $script:Results = New-Object 'System.Collections.Generic.List[object]'
+            Invoke-RegSetting -Setting (Get-TestSetting -ApplyIfMaybeUnsupported $true)
+            $script:Results[-1].Status | Should -Be "VerifyFail"
+        }
+
+        It "Audit marks an edition-skipped tweak as Skipped, not WouldChange" {
+            $script:Mode = "Audit"
+            $script:Results = New-Object 'System.Collections.Generic.List[object]'
+            Invoke-RegSetting -Setting (Get-TestSetting -ApplyIfMaybeUnsupported $false)
+            $script:Results[-1].Status | Should -Be "Skipped"
+        }
+    }
+
+    Context "Get-RegValueSafe caching (C2)" {
+        BeforeAll { $script:RegKeyCache = $null }
+
+        It "populates the per-run cache and Clear-RegKeyCache invalidates it" {
+            $path = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+            $null = Get-RegValueSafe -Path $path -Name "CurrentBuild"
+            $script:RegKeyCache.ContainsKey($path) | Should -Be $true
+            Clear-RegKeyCache -Path $path
+            $script:RegKeyCache.ContainsKey($path) | Should -Be $false
+        }
+
+        It "caches a missing key so repeated misses are cheap" {
+            $missing = "HKLM:\SOFTWARE\CalmModeNoSuchKey_$([Guid]::NewGuid().ToString('N'))"
+            (Get-RegValueSafe -Path $missing -Name "X").Exists | Should -Be $false
+            $script:RegKeyCache.ContainsKey($missing) | Should -Be $true
+        }
+    }
+
+    Context "Apply idempotency (E1)" {
+        BeforeAll {
+            $script:BuildNumber = 22621
+            $script:UBR = 0
+            $script:EditionGroup = "Pro"
+            $script:DisabledTweaks = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+            $script:RegKeyCache = $null
+            # Point at an existing read-only value so "current == desired" holds and Apply takes
+            # the AlreadyConfigured path (which returns BEFORE any write / ShouldProcess). This
+            # proves the idempotency guarantee without changing the system.
+            $script:probePath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+            $script:probeName = "CurrentBuild"
+            $script:probeVal = (Get-RegValueSafe -Path $script:probePath -Name $script:probeName).Value
+        }
+
+        function Get-IdemSetting {
+            [pscustomobject]@{
+                Key = "$script:probePath\$script:probeName"
+                Category = "Idem"; Path = $script:probePath; Name = $script:probeName
+                Type = "String"; Value = $script:probeVal; Description = "already-correct probe"
+                MinBuild = 0; Editions = @(); Confidence = "Official"
+                Note = ""; ApplyIfMaybeUnsupported = $true; MinUBR = 0
+            }
+        }
+
+        It "reports AlreadyConfigured (no write) on repeated Apply when already correct" {
+            $script:Mode = "Apply"
+            foreach ($run in 1..2) {
+                $script:Results = New-Object 'System.Collections.Generic.List[object]'
+                Invoke-RegSetting -Setting (Get-IdemSetting)
+                $script:Results[-1].Status | Should -Be "AlreadyConfigured"
+            }
         }
     }
 }
@@ -246,6 +410,15 @@ Describe "Config mechanism (integration)" {
         It "reports a non-empty script version" {
             [string]::IsNullOrWhiteSpace($script:catalog.ScriptVersion) | Should -Be $false
         }
+        It "exposes a non-empty AttentionStatuses list" {
+            ($script:catalog.PSObject.Properties.Name -contains "AttentionStatuses") | Should -Be $true
+            @($script:catalog.AttentionStatuses).Count | Should -BeGreaterThan 0
+        }
+        It "gives every block a non-empty Title" {
+            foreach ($b in $script:catalog.Blocks) {
+                [string]::IsNullOrWhiteSpace($b.Title) | Should -Be $false
+            }
+        }
     }
 
     Context "-ConfigPath selection" {
@@ -267,6 +440,24 @@ Describe "Config mechanism (integration)" {
             $results = Invoke-AuditWithConfig @{ blocks = @{}; disabledTweaks = @() }
             $bad = $results | Where-Object { $script:knownStatuses -notcontains $_.Status }
             (@($bad)).Count | Should -Be 0
+        }
+
+        It "records a Run configuration preflight row that reflects a disabled block" {
+            $results = Invoke-AuditWithConfig @{ blocks = @{ Gaming = $false }; disabledTweaks = @() }
+            $row = $results | Where-Object { $_.Category -eq "Preflight" -and $_.Item -eq "Run configuration" } | Select-Object -First 1
+            $row | Should -Not -BeNullOrEmpty
+            $row.Status | Should -Be "Compliant"
+            $row.Message | Should -Match "Selection source"
+            # Gaming was turned off, so it must not appear in the enabled-blocks list.
+            $row.Message | Should -Not -Match "Gaming"
+        }
+
+        It "records disabled tweaks in the Run configuration row" {
+            $enabledKeys = ($script:catalog.Blocks | Where-Object { $_.Enabled }).Key
+            $tweak = $script:catalog.Tweaks | Where-Object { $enabledKeys -contains $_.BlockKey } | Select-Object -First 1
+            $results = Invoke-AuditWithConfig @{ blocks = @{}; disabledTweaks = @($tweak.Key) }
+            $row = $results | Where-Object { $_.Category -eq "Preflight" -and $_.Item -eq "Run configuration" } | Select-Object -First 1
+            $row.Message | Should -Match "Disabled tweaks"
         }
     }
 
@@ -321,6 +512,15 @@ Describe "Config mechanism (integration)" {
         It "exits with code 1 on a missing config path" {
             & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -ConfigPath "Z:\does\not\exist.json" -NoReport *> $null
             $LASTEXITCODE | Should -Be 1
+        }
+    }
+
+    Context "-OpenReport switch" {
+        It "is accepted and exits 0 (no HTML opened with -NoReport)" {
+            # -NoReport short-circuits report writing, so -OpenReport opens nothing here:
+            # this asserts the parameter exists and the run stays clean.
+            & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -Mode Audit -NoReport -OpenReport *> $null
+            $LASTEXITCODE | Should -Be 0
         }
     }
 }
