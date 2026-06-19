@@ -5,7 +5,7 @@
       "Bash(git diff*)",
       "Bash(git log*)",
       "Bash(powershell.exe -NoProfile -Command \"*)",
-      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Win11-25H2-CalmMode-v*.ps1 -Mode Audit*)"
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Win11-25H2-CalmMode.ps1 -Mode Audit*)"
     ],
     "deny": [
       "Bash(powershell.exe * -Mode Apply*)",

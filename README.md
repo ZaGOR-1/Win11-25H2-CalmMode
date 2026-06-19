@@ -96,7 +96,7 @@ cd "$env:USERPROFILE\Desktop"
 | Параметр | Значення за замовчуванням | Опис |
 |---|---:|---|
 | `-Mode` | `Audit` | `Audit`, `Apply` або `Verify` |
-| `-TargetReleaseVersionInfo` | `25H2` | Версія Windows, на якій скрипт закріплює систему через Target Release Version |
+| `-TargetReleaseVersionInfo` | `25H2` | Версія Windows для закріплення через Target Release Version. **Діє лише** коли увімкнено `$EnableTargetReleaseVersionPin = $true` (за замовчуванням off) |
 | `-FeatureUpdateDeferralDays` | `90` | На скільки днів відкладати feature updates |
 | `-QualityUpdateDeferralDays` | `7` | На скільки днів відкладати quality updates |
 | `-ActiveHoursStart` | `10` | Початок active hours |
@@ -104,6 +104,8 @@ cd "$env:USERPROFILE\Desktop"
 | `-SearchMode` | `Icon` | Вигляд пошуку на панелі задач: `Hidden`, `Icon`, `Box` |
 | `-TelemetryLevel` | `1` | Рівень diagnostic data для політики `AllowTelemetry`: `0` = Security/Off (поважається лише на Enterprise/Education/IoT, на Home/Pro ігнорується), `1` = Required (мінімум, який реально діє на Home/Pro), `2` = Enhanced, `3` = Full. За замовчуванням `1`, тобто скрипт **не вимикає** діагностику повністю на Home/Pro |
 | `-SetTaskbarLeft` | `$true` | Вирівняти taskbar ліворуч |
+| `-ReportPath` | Робочий стіл | Базова тека, де створюється тека звіту з міткою часу. Якщо порожньо — Робочий стіл (із fallback на `%TEMP%`) |
+| `-NoReport` | off | Не створювати теку звіту, transcript і файли CSV/HTML/JSON (вивід лише в консоль). Діє тільки в read-only режимах `Audit`/`Verify`; у `Apply` ігнорується з попередженням, бо backup і `rollback.reg` потребують теки |
 | `-SkipRestorePoint` | off | Не створювати restore point у `Apply` |
 | `-NoAppCleanup` | off | Пропустити видалення Appx-пакетів |
 | `-NoRestartExplorer` | off | Не перезапускати Explorer після `Apply` |
@@ -120,6 +122,16 @@ cd "$env:USERPROFILE\Desktop"
 
 ```powershell
 .\Win11-25H2-CalmMode.ps1 -Mode Apply -NoAppCleanup
+```
+
+```powershell
+# Звіти в окрему теку замість Робочого столу
+.\Win11-25H2-CalmMode.ps1 -Mode Audit -ReportPath C:\Temp\CalmMode
+```
+
+```powershell
+# Швидкий аудит без створення тек/файлів звіту (вивід лише в консоль)
+.\Win11-25H2-CalmMode.ps1 -Mode Audit -NoReport
 ```
 
 ---
@@ -161,16 +173,16 @@ cd "$env:USERPROFILE\Desktop"
 Після кожного запуску створюється папка на робочому столі:
 
 ```text
-Win11-25H2-CalmMode-v2.2-<Mode>-YYYY-MM-DD_HH-MM-SS
+Win11-25H2-CalmMode-v<version>-<Mode>-YYYY-MM-DD_HH-MM-SS
 ```
 
 У ній будуть:
 
 ```text
-Win11-25H2-CalmMode-v2.2-report.html
-Win11-25H2-CalmMode-v2.2-results.csv
-Win11-25H2-CalmMode-v2.2-results.json
-Win11-25H2-CalmMode-v2.2.log
+Win11-25H2-CalmMode-v<version>-report.html
+Win11-25H2-CalmMode-v<version>-results.csv
+Win11-25H2-CalmMode-v<version>-results.json
+Win11-25H2-CalmMode-v<version>.log
 ```
 
 У `Apply`-режимі також зберігаються `.reg` backup-файли для важливих гілок реєстру.

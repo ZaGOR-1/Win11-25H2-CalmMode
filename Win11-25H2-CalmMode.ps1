@@ -49,6 +49,15 @@ param(
 
     [bool]$SetTaskbarLeft = $true,
 
+    # Base directory where the timestamped report folder is created. Empty = Desktop
+    # (falls back to %TEMP% if the Desktop path cannot be resolved).
+    [string]$ReportPath = "",
+
+    # Skip creating the report folder, transcript log, and CSV/HTML/JSON reports.
+    # Honored only for read-only modes (Audit/Verify). In Apply it is forced off,
+    # because the registry backup and rollback.reg require the report folder.
+    [switch]$NoReport,
+
     [switch]$SkipRestorePoint,
     [switch]$NoAppCleanup,
     [switch]$NoRestartExplorer
@@ -164,16 +173,41 @@ $script:ScriptName     = "Win11-25H2-CalmMode-v$script:ScriptVersion"
 $script:ScriptTitle    = "Win11 25H2 Calm Mode v$script:ScriptVersion"
 
 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$desktopPath = [Environment]::GetFolderPath("Desktop")
-if ([string]::IsNullOrWhiteSpace($desktopPath)) { $desktopPath = $env:TEMP }
 
-$script:ReportDir = Join-Path $desktopPath "$script:ScriptName-$Mode-$timestamp"
-New-Item -ItemType Directory -Path $script:ReportDir -Force | Out-Null
+# Resolve the base directory for the report folder: -ReportPath wins, otherwise the
+# Desktop, otherwise %TEMP%. Keeps the default behavior when -ReportPath is not given.
+if (-not [string]::IsNullOrWhiteSpace($ReportPath)) {
+    $reportBase = $ReportPath
+} else {
+    $reportBase = [Environment]::GetFolderPath("Desktop")
+    if ([string]::IsNullOrWhiteSpace($reportBase)) { $reportBase = $env:TEMP }
+}
 
-try {
-    Start-Transcript -Path (Join-Path $script:ReportDir "$script:ScriptName.log") -Force | Out-Null
-} catch {
-    Write-Host "WARNING: Could not start transcript: $($_.Exception.Message)" -ForegroundColor Yellow
+# -NoReport is honored only for read-only modes. Apply needs the folder for the
+# registry backup and rollback.reg, so the switch is forced off there with a warning.
+$script:NoReport = [bool]$NoReport
+if ($script:NoReport -and $Mode -eq "Apply") {
+    Write-Host "WARNING: -NoReport is ignored in Apply mode because the registry backup and rollback.reg require the report folder." -ForegroundColor Yellow
+    $script:NoReport = $false
+}
+
+if ($script:NoReport) {
+    $script:ReportDir = ""
+} else {
+    $script:ReportDir = Join-Path $reportBase "$script:ScriptName-$Mode-$timestamp"
+    try {
+        New-Item -ItemType Directory -Path $script:ReportDir -Force | Out-Null
+    } catch {
+        Write-Host "WARNING: Could not create report folder '$script:ReportDir': $($_.Exception.Message). Falling back to %TEMP%." -ForegroundColor Yellow
+        $script:ReportDir = Join-Path $env:TEMP "$script:ScriptName-$Mode-$timestamp"
+        New-Item -ItemType Directory -Path $script:ReportDir -Force | Out-Null
+    }
+
+    try {
+        Start-Transcript -Path (Join-Path $script:ReportDir "$script:ScriptName.log") -Force | Out-Null
+    } catch {
+        Write-Host "WARNING: Could not start transcript: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
 }
 
 function Write-Section {
@@ -277,7 +311,9 @@ function Test-ValueEquals {
     )
 
     if ($Type -eq "DWord") {
-        try { return ([int]$A -eq [int]$B) } catch { return $false }
+        # Use [long] (Int64), not [int]: REG_DWORD is an unsigned 32-bit value, so a desired
+        # value above 2147483647 would overflow Int32 and throw. Int64 holds the full range.
+        try { return ([long]$A -eq [long]$B) } catch { return $false }
     }
 
     return ([string]$A -eq [string]$B)
@@ -600,7 +636,11 @@ function Format-RegValueLine {
     }
 
     if ($Type -eq "DWord") {
-        $dword = ('{0:x8}' -f [int]$Value)
+        # REG_DWORD is an unsigned 32-bit value. Casting to [int] would overflow for values
+        # above 2147483647 (for example 0xFFFFFFFF). Mask the low 32 bits via [long] so both
+        # large unsigned values and negative inputs (-1 -> ffffffff) encode correctly.
+        $dwordVal = ([long]$Value) -band 0xffffffffL
+        $dword = ('{0:x8}' -f $dwordVal)
         return "`"$escapedName`"=dword:$dword"
     }
 
@@ -787,21 +827,36 @@ function Invoke-AppCleanupTarget {
         }
 
         try {
+            # Stay best-effort (one failure must not abort the whole target), but capture
+            # each failure reason so the report explains why a package was not removed,
+            # instead of silently swallowing it with -ErrorAction SilentlyContinue.
+            $removalErrors = New-Object 'System.Collections.Generic.List[string]'
+
             foreach ($pkg in $appxMatches.CurrentUser) {
                 Write-Host "Removing current-user Appx: $($pkg.Name)" -ForegroundColor Yellow
-                Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction SilentlyContinue
+                try {
+                    Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction Stop
+                } catch {
+                    $removalErrors.Add("$($pkg.Name) (current-user): $($_.Exception.Message)") | Out-Null
+                }
             }
 
             foreach ($pkg in $appxMatches.AllUsers) {
+                Write-Host "Attempting all-users Appx removal: $($pkg.Name)" -ForegroundColor Yellow
                 try {
-                    Write-Host "Attempting all-users Appx removal: $($pkg.Name)" -ForegroundColor Yellow
-                    Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
-                } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
+                    Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop
+                } catch {
+                    $removalErrors.Add("$($pkg.Name) (all-users): $($_.Exception.Message)") | Out-Null
+                }
             }
 
             foreach ($prov in $appxMatches.Provisioned) {
                 Write-Host "Removing provisioned Appx: $($prov.DisplayName)" -ForegroundColor Yellow
-                Remove-AppxProvisionedPackage -Online -PackageName $prov.PackageName -ErrorAction SilentlyContinue | Out-Null
+                try {
+                    Remove-AppxProvisionedPackage -Online -PackageName $prov.PackageName -ErrorAction Stop | Out-Null
+                } catch {
+                    $removalErrors.Add("$($prov.DisplayName) (provisioned): $($_.Exception.Message)") | Out-Null
+                }
             }
 
             Start-Sleep -Seconds 1
@@ -813,8 +868,9 @@ function Invoke-AppCleanupTarget {
                 Add-Result "Appx Cleanup" $Name "Changed" $currentSummary "Absent" "" "" "BestEffort" "BestEffort" "Packages removed and verified absent."
                 Write-ResultLine "Changed" "Appx Cleanup" $Name $currentSummary "Absent" "Removed and verified."
             } else {
-                Add-Result "Appx Cleanup" $Name "Warning" $afterSummary "Absent" "" "" "BestEffort" "BestEffort" "Some packages remain. This can happen for system/user-protected packages."
-                Write-ResultLine "Warning" "Appx Cleanup" $Name $afterSummary "Absent" "Some packages remain."
+                $reasonText = if ($removalErrors.Count -gt 0) { " Reasons: " + ($removalErrors -join " | ") } else { "" }
+                Add-Result "Appx Cleanup" $Name "Warning" $afterSummary "Absent" "" "" "BestEffort" "BestEffort" "Some packages remain. This can happen for system/user-protected packages.$reasonText"
+                Write-ResultLine "Warning" "Appx Cleanup" $Name $afterSummary "Absent" "Some packages remain.$reasonText"
             }
         } catch {
             Add-Result "Appx Cleanup" $Name "Error" $currentSummary "Absent" "" "" "BestEffort" "BestEffort" $_.Exception.Message
@@ -931,6 +987,18 @@ function Add-PreflightResults {
     }
     Add-Result "Preflight" "Per-user hive (HKCU)" $hkcuStatus $script:CurrentIdentityName $script:InteractiveUser "" "" "Official" "Detected" $hkcuMsg
     Write-ResultLine $hkcuStatus "Preflight" "Per-user hive (HKCU)" $script:CurrentIdentityName $script:InteractiveUser $hkcuMsg
+
+    # A 32-bit PowerShell host on 64-bit Windows is subject to WOW6432Node redirection for
+    # parts of HKLM\SOFTWARE, so HKLM policy writes can land in the wrong registry view.
+    # Warn so the user re-runs the 64-bit Windows PowerShell.
+    $bitnessStatus = "Compliant"
+    $bitnessMsg = "PowerShell process bitness matches the OS."
+    if (-not [Environment]::Is64BitProcess -and [Environment]::Is64BitOperatingSystem) {
+        $bitnessStatus = "Warning"
+        $bitnessMsg = "Running 32-bit PowerShell on 64-bit Windows. Some HKLM\SOFTWARE writes are redirected through WOW6432Node and policies may not apply as expected. Re-run the 64-bit Windows PowerShell at %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe."
+    }
+    Add-Result "Preflight" "PowerShell bitness" $bitnessStatus ([Environment]::Is64BitProcess) $true "" "" "Official" "Detected" $bitnessMsg
+    Write-ResultLine $bitnessStatus "Preflight" "PowerShell bitness" ([Environment]::Is64BitProcess) $true $bitnessMsg
 }
 
 function Initialize-RegistrySettings {
@@ -1078,9 +1146,9 @@ function Initialize-RegistrySettings {
         $AU_HKLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
 
         Add-RegSetting "Windows Update" $AU_HKLM "NoAutoUpdate" "DWord" 0 "Keep Windows Update enabled" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Does not disable the Windows Update service."
-    if ($EnableManualWindowsUpdateMode) {
-        Add-RegSetting "Windows Update" $AU_HKLM "AUOptions" "DWord" 2 "Notify before downloading and installing updates (manual updates)" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "AUOptions=2 means Windows notifies before BOTH download and install, so updates become manual and security patches are not installed until the user acts. This does NOT disable Windows Update or its service; it only reduces update automation."
-    }
+        if ($EnableManualWindowsUpdateMode) {
+            Add-RegSetting "Windows Update" $AU_HKLM "AUOptions" "DWord" 2 "Notify before downloading and installing updates (manual updates)" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "AUOptions=2 means Windows notifies before BOTH download and install, so updates become manual and security patches are not installed until the user acts. This does NOT disable Windows Update or its service; it only reduces update automation."
+        }
         Add-RegSetting "Windows Update" $AU_HKLM "NoAutoRebootWithLoggedOnUsers" "DWord" 1 "Avoid auto-restart while user is logged on" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "May be affected by modern Windows Update restart policies."
         Add-RegSetting "Windows Update" $WU_HKLM "ExcludeWUDriversInQualityUpdate" "DWord" 1 "Do not include drivers with Windows Updates" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Windows Update" $WU_HKLM "SetAllowOptionalContent" "DWord" 0 "Do not automatically receive optional updates / CFRs" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
@@ -1192,7 +1260,12 @@ function Invoke-GpUpdateAndExplorer {
             Write-Host "Restarting Explorer..." -ForegroundColor Cyan
             Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 2
-            Start-Process explorer.exe
+            # Windows usually relaunches the shell automatically after explorer is killed.
+            # Only start it ourselves if no explorer process came back, to avoid two shells.
+            $explorerRunning = @(Get-Process -Name explorer -ErrorAction SilentlyContinue).Count -gt 0
+            if (-not $explorerRunning) {
+                Start-Process explorer.exe
+            }
             Add-Result "Apply" "Restart Explorer" "Changed" "" "" "" "" "UISetting" "Supported" "Explorer restarted to apply taskbar/start UI settings."
         } catch {
             Add-Result "Apply" "Restart Explorer" "Warning" "" "" "" "" "UISetting" "Supported" "Explorer restart failed: $($_.Exception.Message)"
@@ -1203,20 +1276,32 @@ function Invoke-GpUpdateAndExplorer {
 }
 
 function Write-Reports {
+    if ($script:NoReport) {
+        Write-Host "Reports skipped by -NoReport (console output only)." -ForegroundColor DarkYellow
+        return
+    }
+
     Write-Section "Writing reports"
 
     $csvPath = Join-Path $script:ReportDir "$script:ScriptName-results.csv"
     $htmlPath = Join-Path $script:ReportDir "$script:ScriptName-report.html"
     $jsonPath = Join-Path $script:ReportDir "$script:ScriptName-results.json"
 
+    # Windows PowerShell 5.1 writes a UTF-8 BOM with -Encoding UTF8, which complicates
+    # parsing of CSV/JSON by other tools. Write through UTF8Encoding($false) for no BOM,
+    # matching the encoding approach used in New-ReleaseArchive.ps1.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
     try {
-        $script:Results | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
+        $csvLines = $script:Results | ConvertTo-Csv -NoTypeInformation
+        [System.IO.File]::WriteAllLines($csvPath, $csvLines, $utf8NoBom)
     } catch {
         Write-Host "WARNING: CSV report failed: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 
     try {
-        $script:Results | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding UTF8
+        $jsonText = $script:Results | ConvertTo-Json -Depth 6
+        [System.IO.File]::WriteAllText($jsonPath, $jsonText, $utf8NoBom)
     } catch {
         Write-Host "WARNING: JSON report failed: $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -1272,7 +1357,7 @@ $resultsHtml
 "@
 
     try {
-        $html | Out-File -FilePath $htmlPath -Encoding UTF8
+        [System.IO.File]::WriteAllText($htmlPath, $html, $utf8NoBom)
         Write-Host "HTML report: $htmlPath" -ForegroundColor Green
         Write-Host "CSV report:  $csvPath" -ForegroundColor Green
         Write-Host "JSON report: $jsonPath" -ForegroundColor Green
@@ -1285,43 +1370,63 @@ $resultsHtml
 # MAIN
 # ============================================================
 
-Write-Section "$script:ScriptTitle - $Mode"
+# Wrap the whole run so the transcript is always stopped, even on an unexpected
+# terminating error mid-run (otherwise the log file stays open for the session).
+try {
+    Write-Section "$script:ScriptTitle - $Mode"
 
-Write-Host "Mode: $Mode" -ForegroundColor Cyan
-Write-Host "Report folder: $script:ReportDir" -ForegroundColor Yellow
-Write-Host "Windows: $script:ProductName | DisplayVersion=$script:DisplayVersion | Build=$script:BuildNumber.$script:UBR | Edition=$script:EditionId" -ForegroundColor Cyan
+    Write-Host "Mode: $Mode" -ForegroundColor Cyan
+    if ($script:NoReport) {
+        Write-Host "Report folder: (disabled by -NoReport)" -ForegroundColor Yellow
+    } else {
+        Write-Host "Report folder: $script:ReportDir" -ForegroundColor Yellow
+    }
+    Write-Host "Windows: $script:ProductName | DisplayVersion=$script:DisplayVersion | Build=$script:BuildNumber.$script:UBR | Edition=$script:EditionId" -ForegroundColor Cyan
 
-Add-PreflightResults
-Initialize-RegistrySettings
+    Add-PreflightResults
+    Initialize-RegistrySettings
 
-Invoke-RegistryBackup
-Invoke-RestorePoint
+    Invoke-RegistryBackup
+    Invoke-RestorePoint
 
-Invoke-AllRegistrySettings
-Write-RollbackRegFile
-Invoke-AppCleanup
-Invoke-GpUpdateAndExplorer
-Write-Reports
+    Invoke-AllRegistrySettings
+    Write-RollbackRegFile
+    Invoke-AppCleanup
+    Invoke-GpUpdateAndExplorer
+    Write-Reports
 
-Write-Host ""
-Write-Host "Done." -ForegroundColor Green
-Write-Host "Report folder:" -ForegroundColor Cyan
-Write-Host $script:ReportDir -ForegroundColor Yellow
-
-if ($Mode -eq "Audit") {
     Write-Host ""
-    Write-Host "No changes were made. To apply:" -ForegroundColor Cyan
-    Write-Host ".\$script:ScriptName.ps1 -Mode Apply" -ForegroundColor Yellow
+    Write-Host "Done." -ForegroundColor Green
+    if (-not $script:NoReport) {
+        Write-Host "Report folder:" -ForegroundColor Cyan
+        Write-Host $script:ReportDir -ForegroundColor Yellow
+    }
+
+    if ($Mode -eq "Audit") {
+        Write-Host ""
+        Write-Host "No changes were made. To apply:" -ForegroundColor Cyan
+        Write-Host ".\$script:ScriptName.ps1 -Mode Apply" -ForegroundColor Yellow
+    }
+
+    if ($Mode -eq "Apply") {
+        Write-Host ""
+        Write-Host "Recommended: restart your laptop after Apply mode." -ForegroundColor Cyan
+        Write-Host "Then run:" -ForegroundColor Cyan
+        Write-Host ".\$script:ScriptName.ps1 -Mode Verify" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "To undo registry changes, double-click rollback.reg in the report folder," -ForegroundColor Cyan
+        Write-Host "or use the System Restore point created before Apply." -ForegroundColor Cyan
+    }
+} finally {
+    try { Stop-Transcript | Out-Null } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
 }
 
-if ($Mode -eq "Apply") {
-    Write-Host ""
-    Write-Host "Recommended: restart your laptop after Apply mode." -ForegroundColor Cyan
-    Write-Host "Then run:" -ForegroundColor Cyan
-    Write-Host ".\$script:ScriptName.ps1 -Mode Verify" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "To undo registry changes, double-click rollback.reg in the report folder," -ForegroundColor Cyan
-    Write-Host "or use the System Restore point created before Apply." -ForegroundColor Cyan
+# Exit code reflects the run outcome so schedulers/CI can detect failures (especially
+# after Verify): 0 = clean, 2 = at least one Error or VerifyFail. Computed after the
+# transcript is closed so the log captures the full run.
+$script:FailureCount = @($script:Results | Where-Object { $_.Status -eq 'Error' -or $_.Status -eq 'VerifyFail' }).Count
+if ($script:FailureCount -gt 0) {
+    Write-Host "Completed with $script:FailureCount issue(s) (Error/VerifyFail). See the report." -ForegroundColor Red
+    exit 2
 }
-
-try { Stop-Transcript | Out-Null } catch { Write-Verbose "Ignored non-critical error: $($_.Exception.Message)" }
+exit 0

@@ -15,6 +15,8 @@ This project uses a simple versioning style: `vMAJOR.MINOR`.
 - Local script `New-ReleaseArchive.ps1` to easily package safe release `.zip` archives without dirty files like `.git`.
 - Deeper versioning support via `$MinUBR` (Update Build Revision) checking for strict policies like Windows AI (Recall).
 - Fully automated CI/CD checks via GitHub Actions: includes `PSScriptAnalyzer`, a forbidden patterns check, and automated Dry-run Audit mode.
+- `-ReportPath` parameter — base directory for the report folder (default: Desktop), so the Desktop is not cluttered.
+- `-NoReport` parameter — skip the report folder, transcript, and CSV/HTML/JSON files (console output only). Honored only in read-only modes; in `Apply` it is ignored with a warning because the backup and `rollback.reg` require the folder.
 
 ### Changed
 
@@ -29,10 +31,29 @@ This project uses a simple versioning style: `vMAJOR.MINOR`.
 - Enhanced release hygiene: the ZIP hash (`.sha256`) is now generated externally alongside the archive instead of being embedded. Release build scripts now strictly exclude audit reports.
 - Release tooling hardening: `New-ReleaseArchive.ps1` computes SHA256 via .NET (no `Get-FileHash` dependency), writes `checksums.txt` and `.sha256` as LF + UTF-8 without BOM, and excludes `.gitignore` from the archive. The CI release workflow now calls this same script as the single source of truth, and CI pins Pester `4.10.1` to match the test syntax.
 
+### Fixed
+
+- `MinUBR` gating no longer reports a false `UnsupportedBuild` when the UBR cannot be read: `$script:UBR` is cast to `[int]` and the check only applies when the UBR is known (`> 0`) — fail-open instead of blocking.
+- `Test-ValueEquals` compares DWords via `[long]` instead of `[int]`, so a desired value above 2147483647 no longer overflows Int32.
+- The script now returns a result-based exit code: `0` = clean, `2` = at least one `Error`/`VerifyFail` (useful for `Verify` in a scheduler/CI).
+- The MAIN body is wrapped in `try/finally`, so the transcript log is closed correctly even on an unexpected error mid-run.
+- Empty `catch {}` blocks now write the error to the verbose stream instead of swallowing it silently.
+- `Format-RegValueLine` encodes DWords via a `[long] -band 0xffffffff` mask, so large unsigned (`0xFFFFFFFF`) and negative (`-1` → `ffffffff`) values in `rollback.reg` no longer overflow Int32.
+- Appx cleanup now captures the reason each package was not removed (previously hidden by `-ErrorAction SilentlyContinue`) and adds it to the report `Message`, while staying best-effort.
+- Explorer restart no longer spawns two processes: the script starts `explorer.exe` only if Windows did not relaunch the shell on its own.
+- CSV/JSON/HTML reports are written as UTF-8 **without BOM** (via `UTF8Encoding($false)`), making them easier to parse with other tools.
+- Minor code hygiene: fixed broken indentation in the `if ($EnableManualWindowsUpdateMode)` block.
+
+### Added (preflight checks)
+
+- "Per-user hive (HKCU)" warning: if the script runs under an account different from the interactive user, per-user (HKCU) settings land in that account's profile — now surfaced honestly as `Warning` in the report.
+- "PowerShell bitness" warning: a 32-bit PowerShell host on 64-bit Windows is subject to WOW6432Node redirection for parts of `HKLM\SOFTWARE`; preflight advises re-running 64-bit Windows PowerShell.
+
 ### Docs
 
 - Documented the `-TelemetryLevel` parameter and the in-script module toggles in the README.
 - Added explicit warnings about Target Release Version pinning and the `AUOptions=2` update behavior.
+- Added `SECURITY.md` (private vulnerability reporting, release integrity verification).
 
 ## [v2.1] - 2026-05-22
 

@@ -96,7 +96,11 @@ The project should preserve this style of operation:
 * `Audit` — inspect and report only
 * `Apply` — apply safe selected changes
 * `Verify` — check whether settings are applied
-* `Rollback` — restore previous registry-backed settings where possible
+
+Rollback is currently NOT a CLI mode. `Apply` generates a per-value `rollback.reg`
+and, where possible, a System Restore point. A dedicated `-RestoreFrom` mode is a
+planned enhancement (see ROADMAP.md), not a shipped feature — do not document or
+assume it as one.
 
 Default behavior should be non-destructive.
 
@@ -140,16 +144,15 @@ When adding or changing Windows policies:
 * If registry mapping is best-effort, label it as best-effort.
 * If a setting requires verification on real Windows 11 25H2, label it as RequiresVerification.
 
-Use statuses like:
+Use the report statuses that the script actually emits (see the status table in README.md):
 
-* `Supported`
-* `UnsupportedBuild`
-* `MaybeIgnoredOnEdition`
-* `BestEffort`
-* `RequiresVerification`
-* `NotConfigured`
-* `Applied`
-* `Failed`
+* Result status: `Compliant`, `WouldChange`, `WouldRemove`, `AlreadyConfigured`,
+  `Changed`, `VerifyOK`, `VerifyFail`, `Skipped`, `Warning`, `Error`, `UnsupportedBuild`.
+* Support / confidence labels: `Supported`, `MaybeIgnoredOnEdition`, `BestEffort`,
+  `RequiresVerification`, `DeprecatedOrLegacy`, `UISetting`.
+
+Do not introduce new status names (for example `NotConfigured`, `Applied`, `Failed`)
+that the script does not produce.
 
 ## Appx / Provisioned Package Rules
 

@@ -47,6 +47,12 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
         It "escapes backslashes and quotes in Name and String Value" {
             Format-RegValueLine -Name 'Test"Name' -Type "String" -Value 'Val\ue' -Delete $false | Should -Be '"Test\"Name"="Val\\ue"'
         }
+        It "encodes a large unsigned DWord without Int32 overflow" {
+            Format-RegValueLine -Name "Big" -Type "DWord" -Value 4294967295 -Delete $false | Should -Be '"Big"=dword:ffffffff'
+        }
+        It "encodes a negative DWord as its unsigned 32-bit pattern" {
+            Format-RegValueLine -Name "Neg" -Type "DWord" -Value -1 -Delete $false | Should -Be '"Neg"=dword:ffffffff'
+        }
     }
 
     Context "Get-EditionGroup" {
@@ -78,6 +84,10 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
             Test-ValueEquals -A "01" -B "1" -Type "String" | Should -Be $false
             Test-ValueEquals -A "Test" -B "Test" -Type "String" | Should -Be $true
         }
+        It "compares large DWords without Int32 overflow" {
+            Test-ValueEquals -A 4294967295 -B 4294967295 -Type "DWord" | Should -Be $true
+            Test-ValueEquals -A 0 -B 4294967295 -Type "DWord" | Should -Be $false
+        }
     }
 
     Context "Get-Applicability" {
@@ -105,6 +115,13 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
             $res = Get-Applicability -Setting $setting
             $res.Status | Should -Be "MaybeIgnoredOnEdition"
             $res.CanApply | Should -Be $true
+        }
+
+        It "MaybeIgnoredOnEdition is not applied when ApplyIfMaybeUnsupported is false" {
+            $setting = [pscustomobject]@{ MinBuild = 22000; Editions = @("Enterprise"); ApplyIfMaybeUnsupported = $false }
+            $res = Get-Applicability -Setting $setting
+            $res.Status | Should -Be "MaybeIgnoredOnEdition"
+            $res.CanApply | Should -Be $false
         }
     }
 
