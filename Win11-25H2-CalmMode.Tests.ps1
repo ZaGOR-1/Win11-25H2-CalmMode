@@ -419,6 +419,45 @@ Describe "Config mechanism (integration)" {
                 [string]::IsNullOrWhiteSpace($b.Title) | Should -Be $false
             }
         }
+        It "exposes the DisableAccountNotifications policy with the documented contract" {
+            $t = $script:catalog.Tweaks | Where-Object { $_.Name -eq "DisableAccountNotifications" } | Select-Object -First 1
+            $t | Should -Not -BeNullOrEmpty
+            $t.Path | Should -Be "HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\AccountNotifications"
+            $t.Type | Should -Be "DWord"
+            [int]$t.Value | Should -Be 1
+            $t.MinBuild | Should -Be 26100
+            $t.Confidence | Should -Be "Official"
+            $t.BlockKey | Should -Be "StartTaskbar"
+            # Documented as Pro and up; Home is covered by the UI companion instead.
+            @($t.Editions) | Should -Not -Contain "Home"
+        }
+        It "exposes the Start_AccountNotifications UI companion for all editions" {
+            $t = $script:catalog.Tweaks | Where-Object { $_.Name -eq "Start_AccountNotifications" } | Select-Object -First 1
+            $t | Should -Not -BeNullOrEmpty
+            $t.Confidence | Should -Be "UISetting"
+            [int]$t.Value | Should -Be 0
+            @($t.Editions).Count | Should -Be 0
+        }
+        It "uses ConnectedSearchUseWeb=0 (the real value name), not the bogus DoNotUseWebResults" {
+            # The 'Don't search the web in Search' policy writes ConnectedSearchUseWeb, per Microsoft Learn.
+            ($script:catalog.Tweaks | Where-Object { $_.Name -eq "DoNotUseWebResults" }) | Should -BeNullOrEmpty
+            $t = $script:catalog.Tweaks | Where-Object { $_.Name -eq "ConnectedSearchUseWeb" } | Select-Object -First 1
+            $t | Should -Not -BeNullOrEmpty
+            [int]$t.Value | Should -Be 0
+            @($t.Editions) | Should -Not -Contain "Pro"
+        }
+        It "registers SearchboxTaskbarMode under CurrentVersion\\Search (the Win11 location)" {
+            $t = $script:catalog.Tweaks | Where-Object { $_.Name -eq "SearchboxTaskbarMode" } | Select-Object -First 1
+            $t | Should -Not -BeNullOrEmpty
+            $t.Path | Should -Be "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"
+        }
+        It "scopes the HKCU Windows Spotlight policies to Enterprise/Education/IoT (not Pro)" {
+            foreach ($n in "DisableWindowsSpotlightFeatures", "DisableWindowsSpotlightOnActionCenter", "DisableWindowsSpotlightOnSettings", "DisableWindowsSpotlightWindowsWelcomeExperience") {
+                $t = $script:catalog.Tweaks | Where-Object { $_.Name -eq $n } | Select-Object -First 1
+                $t | Should -Not -BeNullOrEmpty
+                @($t.Editions) | Should -Not -Contain "Pro"
+            }
+        }
     }
 
     Context "-ConfigPath selection" {

@@ -1,4 +1,4 @@
-# Win11 25H2 Calm Mode v2.3
+# Win11 25H2 Calm Mode
 
 PowerShell-скрипт для акуратного налаштування Windows 11 25H2 у більш “спокійний” режим: менше Copilot/AI-функцій, Widgets, реклами, нав’язливих рекомендацій, фонових процесів Edge, автоматичних драйверів через Windows Update і зайвих UI-підказок.
 
@@ -460,6 +460,8 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `Start_TrackDocs` | `0` | Не відстежувати recent documents |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `Start_TrackProgs` | `0` | Не відстежувати frequently used programs |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `Start_IrisRecommendations` | `0` | Вимикає Start recommendations UI toggle, де підтримується |
+| `HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\AccountNotifications` | `DisableAccountNotifications` | `1` | **Policy** (24H2/26100+, Pro і вище): прибирає сповіщення про акаунт/підписку (MSA reauth, OneDrive, Microsoft 365, Xbox) на плитці користувача в Пуску. На Home ігнорується — там працює UI-перемикач нижче |
+| `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `Start_AccountNotifications` | `0` | **UISetting** (усі редакції): перемикач Параметри → Персоналізація → Пуск «Показувати сповіщення, пов'язані з обліковим записом» |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `HideFileExt` | `0` | Показує розширення файлів |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `ShowSyncProviderNotifications` | `0` | Вимикає sync provider notifications у Explorer |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `LaunchTo` | `1` | Відкривати Explorer у This PC |

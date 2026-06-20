@@ -7,10 +7,11 @@
 Легенда: ✅ варто зробити · ⚠️ опційно (цінність помірна) · ❌ радше не робити.
 Ризик: 🟢 низький · 🟡 середній · 🔴 обережно.
 
-> Статус (2026-06-20): `VERSION = 2.9` **зарелізено** (тег `v2.9` запушено). Гейти зелені — parse OK,
-> PSScriptAnalyzer CLEAN, Pester **68/68**, Audit `EXIT=0` (0 `TerminatingError`), forbidden patterns
-> відсутні. Фази P1–P4 (`v2.6.1`→`v2.9`) випущено одним релізом `v2.9`. Деталі — в `AUDIT.md` і
-> `CHANGELOG_UA/EN`.
+> Статус (2026-06-20): `VERSION = 2.10` (зміни локальні, ще не закомічено й не зарелізено). Гейти зелені —
+> parse OK, PSScriptAnalyzer CLEAN, Pester **73/73**, Audit `EXIT=0` (0 `TerminatingError`),
+> forbidden patterns відсутні. `v2.9` (фази P1–P4) зарелізено тегом `v2.9`. `v2.10` додає account-notifications
+> і **повний аудит актуальності всіх ~110 твіків** (звірка з Microsoft Learn): 2 функціональні фікси
+> (`ConnectedSearchUseWeb`, шлях `SearchboxTaskbarMode`) + правки edition/мітки. Деталі — в `CHANGELOG_UA/EN`.
 
 ---
 
@@ -60,12 +61,52 @@
 
 ## 3. Контент — нові політики (умовно/постійно)
 
-- [ ] **Ревізія політик під свіжі UBR 25H2.** Нові «calm»-релевантні ключі (lock-screen Spotlight,
-  Start «Phone Link»/recommendations, нові Recall/Copilot/Click-to-Do). Кожна — строго за дисципліною
-  `add-policy`: точний Path/Name/Type, `Confidence`, `MinBuild`/`MinUBR`, `Editions`, чесний статус.
-  **Чи треба:** ⚠️ умовно/постійно — це не разовий пункт, а реакція на появу конкретних політик.
-  Інфраструктура готова: `v2.9` додав типи `QWord`/`ExpandString`/`MultiString`. Робити **тільки**
-  коли є конкретний підтверджений ключ; нічого не подавати як «гарантовано працює». 🟡
+- [x] **Account/subscription нотифікації в Start (`v2.10`).** Додано підтверджену пару:
+  `DisableAccountNotifications` (policy, `AccountNotifications.admx`, 24H2/26100+, Pro+) і
+  `Start_AccountNotifications` (UISetting, усі редакції, покриває Home). Звірено з Microsoft Learn
+  (Notifications CSP). Backup уже покриває обидва шляхи рекурсивно.
+- [x] **Повний аудит актуальності всіх ~110 твіків (`v2.10`).** Кожен звірено з Microsoft Learn / ADMX.
+  **0 deprecated/removed.** Виправлено: `DoNotUseWebResults=1` → **`ConnectedSearchUseWeb=0`** (реальне
+  value name; було no-op); шлях `SearchboxTaskbarMode` → `CurrentVersion\Search` (Win11-локація,
+  підтверджено на живій 25H2); 4 HKCU Spotlight-політики → лише Ent/Edu/IoT (без Pro); кілька правок
+  `Confidence`/нотаток. Деталі — в `CHANGELOG_UA/EN`.
+
+### Кандидати на додавання (чернетка — потім переробимо)
+
+> Усе нижче — **пропозиції**, які вписуються в «calm» (менше нав'язування, без ламання Windows).
+> Кожен кандидат проходить дисципліну `add-policy` **перед** додаванням: звірка з Microsoft Learn,
+> точний Path/Name/Type, `MinBuild`/`MinUBR`, `Editions`, чесний `Confidence`, тести, README/CHANGELOG.
+> Поки **жоден не доданий** — нічого не подавати як «гарантовано працює».
+
+**3a. Edge quiet mode — розширення** (блок уже є, низький ризик 🟢)
+- [ ] `ShowRecommendationsEnabled=0` — прибрати «рекомендації»/підказки фіч Edge. *Впевненість: висока.*
+- [ ] `EdgeShoppingAssistantEnabled=0` — shopping/купони-попапи. *Висока.*
+- [ ] `PersonalizationReportingEnabled=0` — менше трекінгу для реклами. *Висока.*
+- [ ] `SpotlightExperiencesAndRecommendationsEnabled=0` — Edge spotlight. *Середня.*
+- [ ] `NewTabPageContentEnabled=0` — прибрати MSN-стрічку на новій вкладці. *Середня — змінює NTP, радше opt-in.*
+
+**3b. Історія активності / Timeline** (privacy, `HKLM\…\Policies\Microsoft\Windows\System`, 🟢)
+- [ ] `EnableActivityFeed=0`, `PublishUserActivities=0`, `UploadUserActivities=0` — менше збору/синхронізації
+  «що ви робили». Документовані ADMX, не ламають функціонал. *Впевненість: висока.*
+
+**3c. Онлайн-контент у Settings** (🟢)
+- [ ] `AllowOnlineTips=0` (`HKLM\…\Policies\Microsoft\Windows\Explorer`) — Settings перестає тягнути
+  онлайн-підказки. Документована ADMX. *Впевненість: висока.*
+
+**3d. Пошук на таскбарі — policy-версія** (🟡, opt-in)
+- [ ] `ConfigureSearchOnTaskbarMode` (24H2+, Pro+) — policy-аналог наявного UI-твіка `SearchboxTaskbarMode`.
+  Жорсткіша (блокує перемикач у Settings), тому **тільки opt-in**, не за замовчуванням.
+
+**Рекомендований перший набір** (баланс користь×безпека×документованість): **3b + 3c** + найбезпечніші
+з 3a (`ShowRecommendationsEnabled`, `EdgeShoppingAssistantEnabled`, `PersonalizationReportingEnabled`).
+
+**Свідомо НЕ кандидати** (це вже ламання функціоналу, не «calm»): `DisableSearch=1` (повне вимкнення
+пошуку), масове прибирання індексації, вимкнення clipboard history.
+
+**Перевірені й відкинуті** (немає стабільного ключа / вже покрито): Start «Phone Link»/mobile devices
+(нема задокументованої policy); `TurnOffCopilot` під `WindowsCopilot` (Learn описує лише
+`RemoveMicrosoftCopilotApp` — уже в каталозі); lock-screen Spotlight (покрито CDM `RotatingLockScreen*`/
+`SubscribedContent-338387`); Recall/Click-to-Do/Paint AI (уже в каталозі).
 
 ---
 
@@ -93,7 +134,7 @@
 1. ~~**Зарелізити `v2.6.1`→`v2.9`** (розділ 0)~~ ✅ виконано (тег `v2.9` запушено).
 2. **VM-валідація Apply** (розділ 1) — коли буде VM; закриває головну прогалину довіри. ← наступне
 3. **`-CompareReports`** (розділ 2) — якщо хочеться полірування.
-4. **Нові політики** (розділ 3) — тільки під конкретний підтверджений ключ.
+4. **Нові політики** (розділ 3) — є чернетка кандидатів (3a–3d); брати набір 3b+3c+безпечні з 3a, кожен через `add-policy`.
 5. **MD-гігієна** (розділ 4) — будь-коли, дешево.
 
 > Підсумок чесно: **обов'язкове — лише розділ 0** (випустити зроблене) і, як хочете реальної

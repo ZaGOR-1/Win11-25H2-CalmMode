@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [v2.10] - 2026-06-20
+
+### Added
+
+- **Start account/subscription notifications (new policy).** Suppresses the MSA reauth,
+  OneDrive cloud-storage, Microsoft 365 and Xbox subscription nags that appear on the Start
+  user tile. Two settings in the **Start / Taskbar** block:
+  - `DisableAccountNotifications = 1` (policy, `HKCU\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\AccountNotifications`)
+    — Microsoft-documented `AccountNotifications.admx` policy, **Windows 11 24H2/26100+**,
+    editions Pro / Enterprise / Education / IoT Enterprise. `Official`, no reboot.
+  - `Start_AccountNotifications = 0` (UI toggle, `…\Explorer\Advanced`) — the
+    Settings → Personalization → Start "Show account-related notifications" switch.
+    `UISetting`, all editions, so it also covers **Home** where the policy is ignored.
+
+  Both registry paths are already inside the recursive backup set, so `rollback.reg` and the
+  registry backup cover them with no backup-list change.
+
+### Tests
+
+- Catalog assertions for both new settings (documented path/type/value/min-build/editions for the
+  policy; UI companion present for all editions). **70** total.
+
 ## [v2.9] - 2026-06-20
 
 ### Added

@@ -875,6 +875,7 @@ function Invoke-RegistryBackup {
         "HKLM\SOFTWARE\Policies\Microsoft\Windows\Appx",
         "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock",
         "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        "HKCU\Software\Microsoft\Windows\CurrentVersion\Search",
         "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
         "HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo",
         "HKCU\Software\Microsoft\Windows\CurrentVersion\Privacy",
@@ -1468,17 +1469,17 @@ function Initialize-RegistrySettings {
         Add-RegSetting "Windows AI" $WindowsAI_HKLM "AllowRecallEnablement" "DWord" 0 "Make Recall optional component unavailable" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy; prevents users from enabling Recall where supported." $true 3915
         Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableAIDataAnalysis" "DWord" 1 "Disable Recall snapshot saving / AI data analysis" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "WindowsAI policy." $true 3915
         Add-RegSetting "Windows AI" $WindowsAI_HKCU "DisableAIDataAnalysis" "DWord" 1 "Disable Recall snapshot saving for current user" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "User-scoped WindowsAI policy." $true 3915
-        Add-RegSetting "Windows AI" $WindowsAI_HKLM "AllowRecallExport" "DWord" 0 "Block Recall export where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "WindowsAI policy where supported."
+        Add-RegSetting "Windows AI" $WindowsAI_HKLM "AllowRecallExport" "DWord" 0 "Block Recall export where supported" 26100 @("Enterprise","Education","IoTEnterprise") "RequiresVerification" "WindowsAI policy; Microsoft documents it for Enterprise/Education/IoT (not Pro) and currently EEA-only. Value 0 is also the default, so this is largely redundant."
 
         Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableClickToDo" "DWord" 1 "Disable Click to Do" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "WindowsAI policy."
         Add-RegSetting "Windows AI" $WindowsAI_HKCU "DisableClickToDo" "DWord" 1 "Disable Click to Do for current user" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "User-scoped WindowsAI policy."
-        Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableSettingsAgent" "DWord" 1 "Disable AI agent/search in Settings where supported" 26100 @("Enterprise","Education","IoTEnterprise") "RequiresVerification" "Policy name is not fully confirmed across builds/regions/editions. Verify with gpresult or the registry after Apply before relying on it."
+        Add-RegSetting "Windows AI" $WindowsAI_HKLM "DisableSettingsAgent" "DWord" 1 "Disable AI agent/search in Settings where supported" 26100 @("Enterprise","Education","IoTEnterprise") "RequiresVerification" "Policy name confirmed (WindowsAI / DisableSettingsAgent), but documented as Insider Preview with no GA build stamp; may be ignored on released builds. Verify after Apply."
 
         Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableCocreator" "DWord" 1 "Disable Paint Cocreator" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy." $true 3360
         Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableGenerativeFill" "DWord" 1 "Disable Paint Generative Fill" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy." $true 3360
         Add-RegSetting "Windows AI" $PaintPolicies_HKLM "DisableImageCreator" "DWord" 1 "Disable Paint Image Creator" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "Official" "Paint AI policy." $true 3360
 
-        Add-RegSetting "Copilot" $WindowsCopilot_HKCU "TurnOffWindowsCopilot" "DWord" 1 "Turn off legacy Windows Copilot" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Deprecated" "Microsoft marks this old Copilot policy as deprecated; kept for legacy behavior."
+        Add-RegSetting "Copilot" $WindowsCopilot_HKCU "TurnOffWindowsCopilot" "DWord" 1 "Turn off legacy Windows Copilot" 22621 @("Pro","Enterprise","Education","IoTEnterprise") "Deprecated" "Microsoft marks this old Copilot policy as deprecated; affects only the legacy 'Copilot in Windows' pane, not the new app. Min Win11 22H2 (22621.2361+)."
         Add-RegSetting "Copilot" "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowCopilotButton" "DWord" 0 "Hide Copilot taskbar button if present" 22000 @() "UISetting" "Explorer UI setting; build-dependent."
         Add-RegSetting "Copilot" $WindowsAI_HKLM "RemoveMicrosoftCopilotApp" "DWord" 1 "Request Microsoft Copilot app removal where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "BestEffort" "Policy availability/behavior can vary by build and Copilot package state."
         Add-RegSetting "Copilot" $WindowsAI_HKCU "RemoveMicrosoftCopilotApp" "DWord" 1 "Request Microsoft Copilot app removal for current user where supported" 26100 @("Pro","Enterprise","Education","IoTEnterprise") "BestEffort" "User-scoped best-effort Copilot app removal policy."
@@ -1505,10 +1506,14 @@ function Initialize-RegistrySettings {
         Add-RegSetting "Cloud Content" $CloudContent_HKLM "DisableCloudOptimizedContent" "DWord" 1 "Disable cloud optimized content" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "May be ignored on Pro/Home."
         Add-RegSetting "Cloud Content" $CloudContent_HKLM "DisableConsumerAccountStateContent" "DWord" 1 "Disable Microsoft account state consumer content" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "May be ignored on Pro/Home."
 
-        Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableWindowsSpotlightFeatures" "DWord" 1 "Disable Windows Spotlight features" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
-        Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableWindowsSpotlightOnActionCenter" "DWord" 1 "Disable Spotlight in Action Center" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
-        Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableWindowsSpotlightOnSettings" "DWord" 1 "Disable Spotlight suggestions in Settings" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
-        Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableWindowsSpotlightWindowsWelcomeExperience" "DWord" 1 "Disable Windows welcome experience after updates" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
+        # The Windows Spotlight policies below are documented (Experience CSP / CloudContent.admx) for
+        # Enterprise/Education/IoT only - Microsoft does NOT list Pro. They are written best-effort on
+        # Pro/Home but may be ignored there. (DisableThirdPartySuggestions / DisableTailoredExperiences
+        # below ARE Pro-supported, so those keep Pro.)
+        Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableWindowsSpotlightFeatures" "DWord" 1 "Disable Windows Spotlight features" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "Documented for Enterprise/Education/IoT; may be ignored on Pro/Home."
+        Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableWindowsSpotlightOnActionCenter" "DWord" 1 "Disable Spotlight in Action Center" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "Documented for Enterprise/Education/IoT; may be ignored on Pro/Home."
+        Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableWindowsSpotlightOnSettings" "DWord" 1 "Disable Spotlight suggestions in Settings" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "Documented for Enterprise/Education/IoT; may be ignored on Pro/Home."
+        Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableWindowsSpotlightWindowsWelcomeExperience" "DWord" 1 "Disable Windows welcome experience after updates" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "Documented for Enterprise/Education/IoT; may be ignored on Pro/Home."
         Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableThirdPartySuggestions" "DWord" 1 "Disable third-party suggestions" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Cloud Content" $CloudContent_HKCU "DisableTailoredExperiencesWithDiagnosticData" "DWord" 1 "Disable tailored experiences with diagnostic data" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
 
@@ -1559,8 +1564,11 @@ function Initialize-RegistrySettings {
         Add-RegSetting "Search" $Search_HKLM "AllowCloudSearch" "DWord" 0 "Disable cloud search integration in Windows Search" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Search" $Search_HKLM "AllowSearchToUseLocation" "DWord" 0 "Disable location-aware Windows Search" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
         Add-RegSetting "Search" $Search_HKLM "DisableWebSearch" "DWord" 1 "Disable web search where policy is honored" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "Historically not always honored on Pro; marked as maybe ignored outside Enterprise/Education/IoT."
-        Add-RegSetting "Search" $Search_HKLM "DoNotUseWebResults" "DWord" 1 "Do not use web results in Search where policy is honored" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "Historically not always honored on Pro; marked as maybe ignored outside Enterprise/Education/IoT."
-        Add-RegSetting "Search" "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer" "DisableSearchBoxSuggestions" "DWord" 1 "Disable Search box suggestions in Explorer/Start" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "Official" ""
+        # Microsoft's "Don't search the web or display web results in Search" policy
+        # (DoNotUseWebResults friendly name) writes the registry value ConnectedSearchUseWeb=0,
+        # NOT a literal "DoNotUseWebResults". Editions: Enterprise/Education/IoT only (CSP marks Pro unsupported).
+        Add-RegSetting "Search" $Search_HKLM "ConnectedSearchUseWeb" "DWord" 0 "Do not use web results in Search where policy is honored" 22000 @("Enterprise","Education","IoTEnterprise") "Official" "Registry value for the 'Don't search the web or display web results in Search' policy (Search.admx). Documented for Enterprise/Education/IoT; Pro is not supported per Microsoft Learn."
+        Add-RegSetting "Search" "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer" "DisableSearchBoxSuggestions" "DWord" 1 "Disable Search box suggestions in Explorer/Start" 22000 @("Pro","Enterprise","Education","IoTEnterprise") "RequiresVerification" "Widely used and effective, but not found in an authoritative Microsoft ADMX/Policy-CSP reference. Verify after Apply."
     }
 
     # ---------------- Start Menu / Taskbar / Explorer ----------------
@@ -1588,7 +1596,10 @@ function Initialize-RegistrySettings {
         if ($SearchMode -eq "Icon") { $searchModeValue = 1 }
         if ($SearchMode -eq "Box") { $searchModeValue = 2 }
 
-        Add-RegSetting "Taskbar" $ExplorerAdvanced_HKCU "SearchboxTaskbarMode" "DWord" $searchModeValue "Set taskbar search mode to $SearchMode" 22000 @() "UISetting" ""
+        # On Windows 11 the taskbar search mode lives under CurrentVersion\Search, NOT
+        # Explorer\Advanced (verified on 25H2: the value is read from the Search key). Values:
+        # 0=hidden, 1=icon, 2=box (matches -SearchMode mapping above).
+        Add-RegSetting "Taskbar" "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" "SearchboxTaskbarMode" "DWord" $searchModeValue "Set taskbar search mode to $SearchMode" 22000 @() "UISetting" "Per-user taskbar search box mode under CurrentVersion\Search."
         Add-RegSetting "Taskbar" $ExplorerAdvanced_HKCU "ShowTaskViewButton" "DWord" 0 "Hide Task View button" 22000 @() "UISetting" ""
         # TaskbarDa is already covered in the Widgets block. Do not register it twice,
         # because Windows 11 25H2 may omit this UI value when Widgets are disabled by policy.
@@ -1596,6 +1607,12 @@ function Initialize-RegistrySettings {
         Add-RegSetting "Start" $ExplorerAdvanced_HKCU "Start_TrackDocs" "DWord" 0 "Do not track recent documents in Start/Jump Lists" 22000 @() "UISetting" ""
         Add-RegSetting "Start" $ExplorerAdvanced_HKCU "Start_TrackProgs" "DWord" 0 "Do not track frequently used programs" 22000 @() "UISetting" ""
         Add-RegSetting "Start" $ExplorerAdvanced_HKCU "Start_IrisRecommendations" "DWord" 0 "Disable Start recommendations UI toggle where supported" 22000 @() "UISetting" ""
+        # Account / subscription nags on the Start user tile (MSA reauth, OneDrive quota,
+        # Microsoft 365 / Xbox upsell, "back up your device"). Policy-backed on 24H2/25H2
+        # (26100+, Pro and up); the UI toggle below also covers Home and is what the
+        # Settings > Personalization > Start "account-related notifications" switch sets.
+        Add-RegSetting "Start" "HKCU:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\AccountNotifications" "DisableAccountNotifications" "DWord" 1 "Turn off account/subscription notifications on the Start user tile" 26100 @("Pro", "Enterprise", "Education", "IoTEnterprise") "Official" "Per-user AccountNotifications.admx policy (Windows 11 24H2/26100+). Suppresses MSA reauth, cloud-storage, Microsoft 365 and Xbox subscription nags on the Start user tile. No reboot needed. Ignored on Home; use the UI toggle below there."
+        Add-RegSetting "Start" $ExplorerAdvanced_HKCU "Start_AccountNotifications" "DWord" 0 "Hide account-related notifications on Start (UI toggle)" 22000 @() "UISetting" "Settings > Personalization > Start toggle 'Show account-related notifications'. Companion to the policy above; works on Home too."
         Add-RegSetting "Explorer" $ExplorerAdvanced_HKCU "HideFileExt" "DWord" 0 "Show file extensions in Explorer" 22000 @() "UISetting" ""
         Add-RegSetting "Explorer" $ExplorerAdvanced_HKCU "ShowSyncProviderNotifications" "DWord" 0 "Disable sync provider notifications in Explorer" 22000 @() "UISetting" ""
         Add-RegSetting "Explorer" $ExplorerAdvanced_HKCU "LaunchTo" "DWord" 1 "Open Explorer to This PC" 22000 @() "UISetting" ""
