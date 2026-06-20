@@ -1554,6 +1554,19 @@ function Initialize-RegistrySettings {
         Add-RegSetting "Privacy" "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" "TailoredExperiencesWithDiagnosticDataEnabled" "DWord" 0 "Disable tailored experiences" 22000 @() "UISetting" ""
         Add-RegSetting "Privacy" "HKCU:\Software\Microsoft\Siuf\Rules" "NumberOfSIUFInPeriod" "DWord" 0 "Disable feedback frequency prompts" 22000 @() "UISetting" ""
         Add-RegSetting "Privacy" "HKCU:\Software\Microsoft\Siuf\Rules" "PeriodInNanoSeconds" "DWord" 0 "Disable feedback prompt period" 22000 @() "UISetting" ""
+
+        # Activity History / Timeline (OSPolicy.admx, System > OS Policies). All three are DWord,
+        # disable = 0, documented since Win10 1709. NOTE: the Activity History feature itself is
+        # deprecated and its Settings UI is removed on 24H2/25H2, so the practical effect is small,
+        # but the policy values are still valid and set reliably. Home is not documented (Pro+).
+        Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" "EnableActivityFeed" "DWord" 0 "Disable Activity Feed / Timeline" 22000 @("Pro", "Enterprise", "Education", "IoTEnterprise") "Official" "OSPolicy.admx (min Win10 1709). Activity History UI is removed on 24H2/25H2, so observable effect is limited there; policy value is still set."
+        Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" "PublishUserActivities" "DWord" 0 "Do not publish user activities to the activity feed" 22000 @("Pro", "Enterprise", "Education", "IoTEnterprise") "Official" "OSPolicy.admx. Stops local apps writing to the activity feed."
+        Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" "UploadUserActivities" "DWord" 0 "Do not upload user activities to the cloud" 22000 @("Pro", "Enterprise", "Education", "IoTEnterprise") "Official" "OSPolicy.admx. Stops syncing activity history to the Microsoft account."
+
+        # 'Allow Online Tips' (ControlPanel.admx GP): stops the Settings app fetching online tips/help
+        # content. ADMX/GP-backed but NOT exposed as an MDM CSP node, so not first-party CSP-confirmed.
+        # Correct path is CurrentVersion\Policies\Explorer (NOT Policies\Microsoft\Windows\Explorer).
+        Add-RegSetting "Privacy" "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" "AllowOnlineTips" "DWord" 0 "Do not fetch online tips/help content in Settings" 22000 @("Home", "Pro", "Enterprise", "Education", "IoTEnterprise") "BestEffort" "ControlPanel.admx GP 'Allow Online Tips' (min Win10 1709). Not an MDM CSP node, so not first-party CSP-confirmed; effect on 24H2/25H2 is best-effort."
     }
 
     # ---------------- Search ----------------
@@ -1665,6 +1678,10 @@ function Initialize-RegistrySettings {
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "LaunchEdgeOnWindowsStartupEnabled" "DWord" 0 "Do not launch Edge automatically at Windows startup" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "PromotionalTabsEnabled" "DWord" 0 "Disable Edge promotional tabs" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Deprecated" "Deprecated Edge policy; kept for legacy compatibility."
         Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "HubsSidebarEnabled" "DWord" 0 "Disable Edge sidebar/hubs where supported" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy."
+        # Additional quiet-mode Edge policies (verified current on the Edge policy reference).
+        Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "ShowRecommendationsEnabled" "DWord" 0 "Disable Edge feature recommendations / coach marks" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy (Edge 89+)."
+        Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "EdgeShoppingAssistantEnabled" "DWord" 0 "Disable Edge shopping assistant / coupons" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy (Edge 87+)."
+        Add-RegSetting "Microsoft Edge" $EdgePolicy_HKLM "PersonalizationReportingEnabled" "DWord" 0 "Disable Edge ad/personalization reporting" 22000 @("Home","Pro","Enterprise","Education","IoTEnterprise") "Official" "Microsoft Edge browser policy (Edge 80+)."
     }
 
     # ---------------- Developer Mode + Long Paths ----------------

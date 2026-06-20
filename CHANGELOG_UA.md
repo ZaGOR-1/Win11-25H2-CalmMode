@@ -4,6 +4,32 @@
 
 Проєкт використовує просту схему версій: `vMAJOR.MINOR`.
 
+## [v2.11] - 2026-06-20
+
+### Додано
+
+- **Ще документовані «calm»-політики** (кожну звірено з Microsoft Learn / ADMX перед додаванням):
+  - **Історія активності / Timeline** (блок Privacy, `HKLM\SOFTWARE\Policies\Microsoft\Windows\System`,
+    `OSPolicy.admx`, Pro+): `EnableActivityFeed=0`, `PublishUserActivities=0`, `UploadUserActivities=0`.
+    `Official`. Чесна нотатка: сама фіча Activity History та її UI deprecated/прибрані на 24H2/25H2,
+    тож практичний ефект обмежений, хоча значення політик виставляються надійно.
+  - **Edge quiet mode** (`HKLM\SOFTWARE\Policies\Microsoft\Edge`, `Official`): `ShowRecommendationsEnabled=0`
+    (рекомендації фіч/coach marks), `EdgeShoppingAssistantEnabled=0` (shopping/купони),
+    `PersonalizationReportingEnabled=0` (репортинг для реклами/персоналізації). Підтверджено як чинні
+    в довіднику політик Edge.
+  - **Allow Online Tips** (`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer` →
+    `AllowOnlineTips=0`): Settings перестає тягнути онлайн-підказки/довідку. Позначено `BestEffort` — це
+    ADMX/GP-політика (`ControlPanel.admx`), але **не** MDM CSP-нода, тож першоджерело не підтвердило
+    повністю; ефект на 24H2/25H2 — best-effort. (Поширений шлях `…\Policies\Microsoft\Windows\Explorer`
+    хибний; робочий ключ — `CurrentVersion\Policies\Explorer`.)
+
+  Усі чотири корені реєстру вже входять у рекурсивний backup, тож `rollback.reg` і резервна копія
+  покривають їх без змін у списку backup.
+
+### Тести
+
+- Перевірки каталогу для всіх семи нових настройок (шляхи, value=0, `Confidence`, редакції). Усього **76**.
+
 ## [v2.10] - 2026-06-20
 
 ### Додано

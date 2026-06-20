@@ -458,6 +458,35 @@ Describe "Config mechanism (integration)" {
                 @($t.Editions) | Should -Not -Contain "Pro"
             }
         }
+        It "exposes the Activity Feed / Timeline policies under Policies\\Microsoft\\Windows\\System (v2.11)" {
+            foreach ($n in "EnableActivityFeed", "PublishUserActivities", "UploadUserActivities") {
+                $t = $script:catalog.Tweaks | Where-Object { $_.Name -eq $n } | Select-Object -First 1
+                $t | Should -Not -BeNullOrEmpty
+                $t.Path | Should -Be "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"
+                [int]$t.Value | Should -Be 0
+                $t.Confidence | Should -Be "Official"
+                # OSPolicy.admx does not document Home for these.
+                @($t.Editions) | Should -Not -Contain "Home"
+            }
+        }
+        It "exposes AllowOnlineTips at the corrected CurrentVersion\\Policies\\Explorer path (v2.11)" {
+            $t = $script:catalog.Tweaks | Where-Object { $_.Name -eq "AllowOnlineTips" } | Select-Object -First 1
+            $t | Should -Not -BeNullOrEmpty
+            $t.Path | Should -Be "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+            [int]$t.Value | Should -Be 0
+            # ADMX/GP but not a CSP node -> honestly BestEffort, not Official.
+            $t.Confidence | Should -Be "BestEffort"
+        }
+        It "exposes the additional Edge quiet-mode policies as Official disables (v2.11)" {
+            foreach ($n in "ShowRecommendationsEnabled", "EdgeShoppingAssistantEnabled", "PersonalizationReportingEnabled") {
+                $t = $script:catalog.Tweaks | Where-Object { $_.Name -eq $n } | Select-Object -First 1
+                $t | Should -Not -BeNullOrEmpty
+                $t.Path | Should -Be "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+                [int]$t.Value | Should -Be 0
+                $t.Confidence | Should -Be "Official"
+                $t.BlockKey | Should -Be "EdgeQuietMode"
+            }
+        }
     }
 
     Context "-ConfigPath selection" {

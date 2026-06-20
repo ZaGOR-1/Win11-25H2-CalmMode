@@ -424,6 +424,10 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy` | `TailoredExperiencesWithDiagnosticDataEnabled` | `0` | Вимикає tailored experiences |
 | `HKCU:\Software\Microsoft\Siuf\Rules` | `NumberOfSIUFInPeriod` | `0` | Вимикає feedback frequency prompts |
 | `HKCU:\Software\Microsoft\Siuf\Rules` | `PeriodInNanoSeconds` | `0` | Вимикає feedback prompt period |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\System` | `EnableActivityFeed` | `0` | **Policy** (Pro+): вимикає Activity Feed / Timeline. Фіча прибрана на 24H2/25H2 — ефект обмежений |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\System` | `PublishUserActivities` | `0` | **Policy** (Pro+): не публікувати активності в feed |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\System` | `UploadUserActivities` | `0` | **Policy** (Pro+): не вивантажувати історію активності в хмару |
+| `HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer` | `AllowOnlineTips` | `0` | **BestEffort** (ADMX/GP `ControlPanel.admx`, не CSP): Settings не тягне онлайн-підказки. Робочий ключ саме тут, не в `Policies\Microsoft\Windows\Explorer` |
 
 ---
 
@@ -512,6 +516,9 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 | `HKLM:\SOFTWARE\Policies\Microsoft\Edge` | `LaunchEdgeOnWindowsStartupEnabled` | `0` | Забороняє Edge запускатися при старті Windows |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Edge` | `PromotionalTabsEnabled` | `0` | Вимикає promotional tabs |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Edge` | `HubsSidebarEnabled` | `0` | Вимикає Edge sidebar/hubs, де підтримується |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Edge` | `ShowRecommendationsEnabled` | `0` | Вимикає рекомендації фіч / coach marks Edge |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Edge` | `EdgeShoppingAssistantEnabled` | `0` | Вимикає shopping assistant / купони Edge |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Edge` | `PersonalizationReportingEnabled` | `0` | Вимикає репортинг для реклами/персоналізації Edge |
 
 ---
 

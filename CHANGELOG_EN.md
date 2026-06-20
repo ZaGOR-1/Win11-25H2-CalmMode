@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [v2.11] - 2026-06-20
+
+### Added
+
+- **More documented "calm" policies** (each verified against Microsoft Learn / ADMX before adding):
+  - **Activity History / Timeline** (Privacy block, `HKLM\SOFTWARE\Policies\Microsoft\Windows\System`,
+    `OSPolicy.admx`, Pro+): `EnableActivityFeed=0`, `PublishUserActivities=0`, `UploadUserActivities=0`.
+    `Official`. Honest note: the Activity History feature/UI is deprecated/removed on 24H2/25H2, so the
+    real-world effect is limited even though the policy values are set reliably.
+  - **Edge quiet mode** (`HKLM\SOFTWARE\Policies\Microsoft\Edge`, `Official`): `ShowRecommendationsEnabled=0`
+    (feature recommendations/coach marks), `EdgeShoppingAssistantEnabled=0` (shopping/coupons),
+    `PersonalizationReportingEnabled=0` (ad/personalization reporting). Confirmed current on the Edge
+    policy reference.
+  - **Allow Online Tips** (`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer` →
+    `AllowOnlineTips=0`): Settings stops fetching online tips/help content. Marked `BestEffort` — it is an
+    ADMX/GP policy (`ControlPanel.admx`) but **not** exposed as an MDM CSP node, so not first-party
+    CSP-confirmed; effect on 24H2/25H2 is best-effort. (The commonly-cited path
+    `…\Policies\Microsoft\Windows\Explorer` is wrong; the working key is `CurrentVersion\Policies\Explorer`.)
+
+  All four registry roots are already inside the recursive backup set, so `rollback.reg` and the registry
+  backup cover them with no backup-list change.
+
+### Tests
+
+- Catalog assertions for all seven new settings (paths, value=0, Confidence, editions). **76** total.
+
 ## [v2.10] - 2026-06-20
 
 ### Added
