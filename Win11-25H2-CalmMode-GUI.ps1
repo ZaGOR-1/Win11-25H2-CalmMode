@@ -857,6 +857,7 @@ $uiFontBold = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.Font
 $form.Font = $uiFont
 
 function New-BadgeLabel {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     param(
         [string]$Text,
         [int]$X,
@@ -1201,7 +1202,7 @@ function Test-TweakMatchesFilter {
     return $false
 }
 
-function Refresh-TweakList {
+function Update-TweakList {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     param($Entry)
 
@@ -1235,7 +1236,7 @@ function Refresh-TweakList {
     }
 }
 
-function Refresh-CategoryList {
+function Update-CategoryList {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     param([string]$PreferredKey = $null)
 
@@ -1277,13 +1278,13 @@ function Refresh-CategoryList {
         $script:Suppress = $false
     }
 
-    Refresh-TweakList -Entry (Get-SelectedBlockEntry)
+    Update-TweakList -Entry (Get-SelectedBlockEntry)
 }
 
 # Live filter: narrow category/tweak lists by substring match on block title, tweak label,
 # or registry preview. Canonical TreeNode state is reused, so filtering never loses selection.
 $applyFilter = {
-    Refresh-CategoryList
+    Update-CategoryList
 }
 $txtFilter.Add_TextChanged($applyFilter)
 $btnFilterClear.Add_Click({ $txtFilter.Text = "" })
@@ -1300,13 +1301,13 @@ $categoryList.Add_ItemChecked({
     } finally {
         $script:Suppress = $false
     }
-    Refresh-TweakList -Entry $entry
+    Update-TweakList -Entry $entry
     Reset-ApplyGateForSelectionChange
 })
 
 $categoryList.Add_SelectedIndexChanged({
     $entry = Get-SelectedBlockEntry
-    Refresh-TweakList -Entry $entry
+    Update-TweakList -Entry $entry
     if ($entry) { Update-DescriptionFromTag -Tag $entry.Node.Tag }
 })
 
@@ -1332,7 +1333,7 @@ $tweakList.Add_SelectedIndexChanged({
     }
 })
 
-Refresh-CategoryList
+Update-CategoryList
 
 # ------------------------------------------------------------
 # Buttons
@@ -1377,7 +1378,7 @@ $btnSelectAll.Add_Click({
         foreach ($c in $entry.Children) { $c.Checked = $true }
     }
     $script:Suppress = $false
-    Refresh-CategoryList
+    Update-CategoryList
     Reset-ApplyGateForSelectionChange
 })
 $btnSelectNone.Add_Click({
@@ -1387,7 +1388,7 @@ $btnSelectNone.Add_Click({
         foreach ($c in $entry.Children) { $c.Checked = $false }
     }
     $script:Suppress = $false
-    Refresh-CategoryList
+    Update-CategoryList
     Reset-ApplyGateForSelectionChange
 })
 
@@ -1416,7 +1417,7 @@ $btnLoad.Add_Click({
         try {
             $cfg = Get-Content -LiteralPath $dlg.FileName -Raw -ErrorAction Stop | ConvertFrom-Json
             Set-TreeFromConfig -Config $cfg
-            Refresh-CategoryList
+            Update-CategoryList
             Reset-ApplyGateForSelectionChange
             $status.Text = (Get-String "StatusLoaded" @($dlg.FileName))
         } catch {
@@ -1746,7 +1747,7 @@ function Update-BlockCounts {
         $n = [int]$perBlock[$bk]
         $script:PerBlockCounts = $perBlock; $entry.Node.Text = if ($n -gt 0) { $entry.BaseTitle + (Get-String "WouldChangeText" @($n)) } else { $entry.BaseTitle }
     }
-    Refresh-CategoryList
+    Update-CategoryList
 }
 
 # Run the engine in a given mode with the current selection, then show the results
