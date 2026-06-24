@@ -4,6 +4,41 @@
 
 Проєкт використовує просту схему версій: `vMAJOR.MINOR`.
 
+## [Unreleased]
+
+## [v2.11] - 2026-06-24
+
+### Виправлено
+
+- GUI з українськими рядками тепер коректно парситься у Windows PowerShell 5.1: файл збережено як
+  UTF-8 with BOM, а launcher використовує явний шлях до 64-bit Windows PowerShell.
+- CI додатково парсить `.ps1` у Windows PowerShell 5.1 і запускає GUI `-SelfTest`, щоб такі проблеми
+  кодування більше не проходили непоміченими.
+- Підказки після `Audit`/`Apply` показують стабільну назву `Win11-25H2-CalmMode.ps1`, а не
+  неіснуючий versioned `.ps1`.
+- `-RestoreFrom` більше не імпортує перший-ліпший `.reg` із теки: для теки потрібен саме
+  `rollback.reg`; довільний `.reg` дозволений тільки як прямий шлях до файла.
+- `rollback.reg` тепер зберігає фактичний попередній тип registry value, якщо значення вже існувало.
+- HTML/GUI `Needs attention` враховує не тільки `Status`, а й `Support`/`Confidence`, щоб
+  `RequiresVerification` / `MaybeIgnoredOnEdition` не губилися, коли саме registry value вже збігається.
+- `Sign-CalmMode.ps1` додається в release archive, бо README документує цей helper.
+
+### Документація
+
+- README синхронізовано з актуальним каталогом: `ConnectedSearchUseWeb = 0`,
+  правильний шлях `SearchboxTaskbarMode`, окреме пояснення `Status` / `Support` / `Confidence`,
+  актуальний опис Appx cleanup і CI GUI self-test.
+- Додано англомовний `README_EN.md`; основний `README.md` лишається українським і має GitHub-лінк
+  **English** на англійську версію.
+- `GEMINI.md`, `docs/ROADMAP.md`, `docs/RELEASE.md` і release-check prompt оновлено під наявний
+  `-RestoreFrom`, двомовні changelog-файли, GUI UA/EN і Windows PowerShell 5.1 перевірки.
+
+### GUI
+
+- Перемикач **EN / UA** тепер локалізує не лише кнопки й блоки, а й усі 112 назв твіків,
+  опис вибраного твіка, категорії та назви пунктів у таблиці результатів.
+- GUI `-SelfTest` перевіряє, що кожен tweak із `-ExportCatalog` має українське відображення.
+
 ## [v2.10] - 2026-06-20
 
 ### Додано

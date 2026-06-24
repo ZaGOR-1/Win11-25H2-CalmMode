@@ -32,10 +32,12 @@ New-Item -ItemType Directory -Path $releaseDir | Out-Null
 # 3. Copy only necessary files
 $filesToInclude = @(
     "README.md",
+    "README_EN.md",
     "CHANGELOG_EN.md",
     "CHANGELOG_UA.md",
     "LICENSE",
     "VERSION",
+    "Sign-CalmMode.ps1",
     "Win11-25H2-CalmMode.ps1",
     "Win11-25H2-CalmMode-GUI.ps1",
     "Win11-25H2-CalmMode-GUI.cmd",

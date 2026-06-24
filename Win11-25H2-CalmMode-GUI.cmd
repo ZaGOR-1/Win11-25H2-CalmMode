@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 REM ============================================================
 REM Win11 25H2 Calm Mode - double-click launcher for the GUI.
 REM
@@ -14,13 +15,19 @@ set "GUI=%~dp0Win11-25H2-CalmMode-GUI.ps1"
 
 if not exist "%GUI%" (
     echo ERROR: GUI script not found next to this launcher:
+    echo ПОМИЛКА: Скрипт GUI не знайдено поруч із цим лаунчером:
     echo   "%GUI%"
     echo Keep Win11-25H2-CalmMode-GUI.cmd in the same folder as the .ps1 files.
+    echo Зберігайте Win11-25H2-CalmMode-GUI.cmd в одній папці з файлами .ps1.
     pause
     exit /b 1
 )
 
-REM -WindowStyle Hidden hides the transient PowerShell console; the GUI window
-REM (and any error dialogs) still appear. The GUI runs detached via start.
-start "" "%PSEXE%" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%GUI%"
+REM Використовуємо тимчасовий VBScript для запуску PowerShell у прихованому режимі,
+REM щоб уникнути "блимання" чорної консолі.
+set "VBS_TEMP=%temp%\Win11-CalmMode-Launch-%RANDOM%.vbs"
+echo Set objShell = WScript.CreateObject("WScript.Shell") > "%VBS_TEMP%"
+echo objShell.Run """%PSEXE%"" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""%GUI%""", 0, False >> "%VBS_TEMP%"
+cscript //nologo "%VBS_TEMP%"
+del "%VBS_TEMP%"
 endlocal

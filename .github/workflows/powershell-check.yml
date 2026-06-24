@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "**.ps1"
+      - "**.cmd"
       - ".github/workflows/powershell-check.yml"
   pull_request:
     paths:
       - "**.ps1"
+      - "**.cmd"
       - ".github/workflows/powershell-check.yml"
   workflow_dispatch:
 
@@ -59,6 +61,41 @@ jobs:
           }
 
           Write-Host "All PowerShell files parsed successfully."
+
+      - name: Parse PowerShell files with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $files = Get-ChildItem -Path . -Recurse -Filter "*.ps1"
+          if (-not $files) {
+              throw "No PowerShell files found."
+          }
+
+          $hasErrors = $false
+          foreach ($file in $files) {
+              Write-Host "Checking Windows PowerShell 5.1 syntax: $($file.FullName)"
+              $tokens = $null
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                  $file.FullName,
+                  [ref]$tokens,
+                  [ref]$errors
+              ) | Out-Null
+
+              if ($errors.Count -gt 0) {
+                  $hasErrors = $true
+                  foreach ($errorItem in $errors) {
+                      Write-Error "$($file.FullName): line $($errorItem.Extent.StartLineNumber), column $($errorItem.Extent.StartColumnNumber): $($errorItem.Message)"
+                  }
+              }
+          }
+
+          if ($hasErrors) {
+              exit 1
+          }
+
+          Write-Host "All PowerShell files parsed successfully in Windows PowerShell 5.1."
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
@@ -117,3 +154,9 @@ jobs:
           Write-Host "Running $($script.Name) in Audit mode..."
           & $script.FullName -Mode Audit
           Write-Host "Dry-run Audit completed successfully."
+
+      - name: GUI self-test
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\Win11-25H2-CalmMode-GUI.ps1 -SelfTest

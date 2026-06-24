@@ -97,10 +97,10 @@ The project should preserve this style of operation:
 * `Apply` — apply safe selected changes
 * `Verify` — check whether settings are applied
 
-Rollback is currently NOT a CLI mode. `Apply` generates a per-value `rollback.reg`
-and, where possible, a System Restore point. A dedicated `-RestoreFrom` mode is a
-planned enhancement (see ROADMAP.md), not a shipped feature — do not document or
-assume it as one.
+Rollback is exposed through `-RestoreFrom`, not through the `-Mode` parameter. `Apply`
+generates a per-value `rollback.reg` and, where possible, a System Restore point. When
+`-RestoreFrom` receives a directory, that directory must contain `rollback.reg`; arbitrary
+`.reg` files are allowed only when the user explicitly passes the file path.
 
 Default behavior should be non-destructive.
 
@@ -258,7 +258,8 @@ Release should ideally include:
 
 * README.md
 * LICENSE
-* CHANGELOG.md
+* CHANGELOG_UA.md
+* CHANGELOG_EN.md
 * main script files
 * docs
 * examples

@@ -549,6 +549,38 @@ function Get-RegValueSafe {
     }
 }
 
+function Get-RegValueTypeSafe {
+    param(
+        [string]$Path,
+        [string]$Name
+    )
+
+    try {
+        if (-not (Test-Path $Path)) {
+            return [pscustomobject]@{ Exists = $false; Type = ""; Error = $null }
+        }
+
+        $key = Get-Item -Path $Path -ErrorAction Stop
+        $kind = $key.GetValueKind($Name)
+        $type = switch ([string]$kind) {
+            "DWord"        { "DWord"; break }
+            "QWord"        { "QWord"; break }
+            "String"       { "String"; break }
+            "ExpandString" { "ExpandString"; break }
+            "MultiString"  { "MultiString"; break }
+            "Binary"       { "Binary"; break }
+            default         { "" }
+        }
+
+        return [pscustomobject]@{ Exists = $true; Type = $type; Error = $null }
+    } catch [System.IO.IOException] {
+        # RegistryKey.GetValueKind throws when the value name does not exist.
+        return [pscustomobject]@{ Exists = $false; Type = ""; Error = $null }
+    } catch {
+        return [pscustomobject]@{ Exists = $false; Type = ""; Error = $_.Exception.Message }
+    }
+}
+
 function Test-ValueEquals {
     param(
         [object]$A,
@@ -796,10 +828,20 @@ function Invoke-RegSetting {
         }
 
         try {
+            $oldType = $Setting.Type
+            if ($read.Exists) {
+                $typeRead = Get-RegValueTypeSafe -Path $Setting.Path -Name $Setting.Name
+                if ($typeRead.Exists -and -not [string]::IsNullOrWhiteSpace($typeRead.Type)) {
+                    $oldType = $typeRead.Type
+                } elseif (-not [string]::IsNullOrWhiteSpace($typeRead.Error)) {
+                    Write-Verbose "Could not read registry value type for rollback: $($Setting.Path)\$($Setting.Name): $($typeRead.Error)"
+                }
+            }
+
             $script:RollbackEntries.Add([pscustomobject]@{
                 Path     = $Setting.Path
                 Name     = $Setting.Name
-                Type     = $Setting.Type
+                Type     = $oldType
                 Existed  = $read.Exists
                 OldValue = if ($read.Exists) { $read.Value } else { $null }
             }) | Out-Null
@@ -959,6 +1001,12 @@ function Format-RegValueLine {
         return "`"$escapedName`"=hex(7):$hex"
     }
 
+    if ($Type -eq "Binary") {
+        $bytes = if ($Value -is [byte[]]) { $Value } else { [byte[]]@($Value) }
+        $hex = ($bytes | ForEach-Object { '{0:x2}' -f $_ }) -join ','
+        return "`"$escapedName`"=hex:$hex"
+    }
+
     # String (REG_SZ)
     $escapedValue = ([string]$Value -replace '\\', '\\') -replace '"', '\"'
     return "`"$escapedName`"=`"$escapedValue`""
@@ -1026,14 +1074,16 @@ function Invoke-RestoreFromBackup {
     if ($item.PSIsContainer) {
         $regItem = Get-ChildItem -LiteralPath $Source -Filter "rollback.reg" -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $regItem) {
-            $regItem = Get-ChildItem -LiteralPath $Source -Filter "*.reg" -ErrorAction SilentlyContinue | Select-Object -First 1
-        }
-        if (-not $regItem) {
-            Write-Host "ERROR: No rollback.reg (or any .reg) found in folder: $Source" -ForegroundColor Red
+            Write-Host "ERROR: No rollback.reg found in folder: $Source" -ForegroundColor Red
+            Write-Host "Pass a direct .reg file path if you intentionally want to import a different registry file." -ForegroundColor DarkYellow
             return 1
         }
         $regPath = $regItem.FullName
     } else {
+        if ([System.IO.Path]::GetExtension($item.FullName) -ine ".reg") {
+            Write-Host "ERROR: -RestoreFrom file must be a .reg file: $($item.FullName)" -ForegroundColor Red
+            return 1
+        }
         $regPath = $item.FullName
     }
 
@@ -1822,10 +1872,14 @@ function Write-Reports {
     # "Needs attention" at the top: everything that is not already compliant/informational.
     # Single source of truth shared with the GUI (via -ExportCatalog) so they never drift.
     $attentionStatuses = Get-AttentionStatuses
-    $attentionRows = $script:Results | Where-Object { $attentionStatuses -contains $_.Status } | Sort-Object Category, Item
+    $attentionRows = $script:Results | Where-Object {
+        $attentionStatuses -contains $_.Status -or
+        $attentionStatuses -contains $_.Support -or
+        $attentionStatuses -contains $_.Confidence
+    } | Sort-Object Category, Item
     if ($attentionRows) {
         $attentionHtml = $attentionRows |
-            Select-Object Category, Item, Status, CurrentValue, DesiredValue, Message |
+            Select-Object Category, Item, Status, Confidence, Support, CurrentValue, DesiredValue, Message |
             ConvertTo-Html -Fragment -PreContent "<h2>Needs attention ($(@($attentionRows).Count))</h2>"
     } else {
         $attentionHtml = "<h2>Needs attention</h2><p class='ok'>Nothing needs attention - all checks are compliant or informational.</p>"
@@ -2018,14 +2072,14 @@ try {
     if ($Mode -eq "Audit") {
         Write-Host ""
         Write-Host "No changes were made. To apply:" -ForegroundColor Cyan
-        Write-Host ".\$script:ScriptName.ps1 -Mode Apply" -ForegroundColor Yellow
+        Write-Host ".\Win11-25H2-CalmMode.ps1 -Mode Apply" -ForegroundColor Yellow
     }
 
     if ($Mode -eq "Apply") {
         Write-Host ""
         Write-Host "Recommended: restart your laptop after Apply mode." -ForegroundColor Cyan
         Write-Host "Then run:" -ForegroundColor Cyan
-        Write-Host ".\$script:ScriptName.ps1 -Mode Verify" -ForegroundColor Yellow
+        Write-Host ".\Win11-25H2-CalmMode.ps1 -Mode Verify" -ForegroundColor Yellow
         Write-Host ""
         Write-Host "To undo registry changes, double-click rollback.reg in the report folder," -ForegroundColor Cyan
         Write-Host "or use the System Restore point created before Apply." -ForegroundColor Cyan

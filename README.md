@@ -1,5 +1,9 @@
 # Win11 25H2 Calm Mode
 
+<p align="right">
+  <a href="README_EN.md"><strong>English</strong></a>
+</p>
+
 PowerShell-скрипт для акуратного налаштування Windows 11 25H2 у більш “спокійний” режим: менше Copilot/AI-функцій, Widgets, реклами, нав’язливих рекомендацій, фонових процесів Edge, автоматичних драйверів через Windows Update і зайвих UI-підказок.
 
 Скрипт **не є агресивним debloater-ом**. Він не вимикає Microsoft Defender, Firewall, Windows Update service, Microsoft Store, WebView2, .NET, сертифікати або критичні системні служби.
@@ -115,7 +119,7 @@ cd "$env:USERPROFILE\Desktop"
 | `-Skip` | (немає) | Швидка альтернатива `-ConfigPath`: список ключів блоків, які **вимкнути** (напр. `-Skip Widgets,Gaming`). Ключі — як у каталозі/конфігу. Не поєднується з `-Only` |
 | `-Only` | (немає) | Залишити увімкненими **лише** перелічені блоки, решту вимкнути (напр. `-Only WindowsAI`). Не поєднується з `-Skip` |
 | `-ThenVerify` | off | Після `Apply` одразу прогнати `Verify` і дописати його результати в той самий звіт (підтверджує, що значення записались). Діє лише в `Apply` |
-| `-RestoreFrom` | (немає) | Відкотити registry-зміни: імпортує `rollback.reg` із вказаної теки звіту (або прямого `.reg`-файлу). Потребує **адміністратора**. Повертає **лише реєстр**, не Appx-пакети |
+| `-RestoreFrom` | (немає) | Відкотити registry-зміни: якщо вказана тека звіту — імпортує саме `rollback.reg`; якщо потрібен інший файл, передайте прямий шлях до `.reg`. Потребує **адміністратора**. Повертає **лише реєстр**, не Appx-пакети |
 | `-EnableSystemProtection` | off | **Opt-in системна зміна:** якщо System Protection вимкнено, увімкнути його перед створенням restore point (інакше точка тихо не створюється). Діє лише в `Apply` |
 | `-SkipRestorePoint` | off | Не створювати restore point у `Apply` |
 | `-NoAppCleanup` | off | Пропустити видалення Appx-пакетів |
@@ -178,6 +182,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Win11-25H2-CalmMode-GU
 Що він робить:
 
 - показує дерево з галочками: **блоки** (Windows AI, Widgets, Cloud Content, …), кожен **розкривається** в окремі твіки;
+- кнопка **EN / UA** перемикає мову інтерфейсу: блоки, назви всіх твіків, опис вибраного твіка і таблиця результатів мають англійський та український варіанти;
 - **поле «Filter»** угорі — швидко звужує дерево за збігом у назві блоку чи твіка (кнопка **Clear** очищає); вибір галочок при цьому не втрачається;
 - зняття галочки з блоку пропускає весь блок; зняття галочки з окремого твіка пропускає лише його;
 - кнопка **Run Audit (safe)** — read-only прогін: нічого не змінює; результат показується **прямо у вікні** (таблиця «Needs attention» з фільтром *Show all* і кнопкою **Export CSV…**), без окремої консолі. Після Audit біля кожного блоку зʼявляється підпис **«(N would change)»**;
@@ -269,9 +274,14 @@ Win11-25H2-CalmMode-v<version>.log
 
 ---
 
-## Значення статусів у звіті
+## Поля статусу у звіті
 
-| Статус | Значення |
+`Status` показує, що сталося з конкретним пунктом під час поточного режиму. `Support` і `Confidence`
+окремо пояснюють, наскільки цей пункт підтримується конкретною збіркою/редакцією Windows і наскільки
+підтверджена його поведінка. HTML-блок **Needs attention** враховує всі три поля, тому туди потрапляють
+не лише помилки, а й policy з edition/build limitations або best-effort поведінкою.
+
+| `Status` | Значення |
 |---|---|
 | `Compliant` | Значення вже було правильним у `Audit` |
 | `WouldChange` | У `Audit` скрипт показує, що це значення було б змінено |
@@ -283,6 +293,9 @@ Win11-25H2-CalmMode-v<version>.log
 | `Skipped` | Пункт пропущено через параметри або конфігурацію |
 | `Warning` | Некритичне попередження |
 | `Error` | Помилка запису або перевірки |
+
+| `Support` / `Confidence` маркер | Значення |
+|---|---|
 | `UnsupportedBuild` | Політика не підходить для поточної збірки |
 | `MaybeIgnoredOnEdition` | Ключ можна записати, але Windows може ігнорувати його на цій редакції |
 | `BestEffort` | Параметр застосовується як best-effort, поведінка може залежати від build/package state |
@@ -435,7 +448,7 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search` | `AllowCloudSearch` | `0` | Вимикає cloud search integration |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search` | `AllowSearchToUseLocation` | `0` | Вимикає location-aware Windows Search |
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search` | `DisableWebSearch` | `1` | Вимикає web search, де політика підтримується |
-| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search` | `DoNotUseWebResults` | `1` | Забороняє web results у Search, де підтримується |
+| `HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search` | `ConnectedSearchUseWeb` | `0` | Забороняє web results у Search, де підтримується |
 | `HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer` | `DisableSearchBoxSuggestions` | `1` | Вимикає search box suggestions у Explorer/Start |
 
 ---
@@ -453,7 +466,7 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 | `HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer` | `HideFrequentlyUsedApps` | `1` | Ховає frequently used apps |
 | `HKCU:\SOFTWARE\Policies\Microsoft\Windows\Explorer` | `HideFrequentlyUsedApps` | `1` | User-scoped варіант |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `TaskbarAl` | `0` | Вирівнює taskbar ліворуч |
-| `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `SearchboxTaskbarMode` | залежить від `-SearchMode` | `Hidden=0`, `Icon=1`, `Box=2` |
+| `HKCU:\Software\Microsoft\Windows\CurrentVersion\Search` | `SearchboxTaskbarMode` | залежить від `-SearchMode` | `Hidden=0`, `Icon=1`, `Box=2` |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `ShowTaskViewButton` | `0` | Ховає Task View button |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `TaskbarDa` | `0` | Ховає Widgets button |
 | `HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` | `TaskbarMn` | `0` | Ховає Chat/Teams consumer button, якщо є |
@@ -552,7 +565,10 @@ HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscribe
 
 ## 14. Appx Cleanup
 
-За замовчуванням Appx cleanup вимкнений. Щоб увімкнути видалення конкретних пакетів, треба вручну змінити відповідний toggle у скрипті:
+За замовчуванням Appx cleanup вимкнений. Видалення конкретних пакетів вмикається тільки opt-in:
+через відповідний module toggle у скрипті, через збережений GUI/config або через конфігураційний файл,
+який явно вмикає потрібний блок. Це best-effort дія: registry rollback не повертає видалені Appx або
+provisioned packages.
 
 | Target | Patterns | Default |
 |---|---|---:|
@@ -707,8 +723,9 @@ The workflow file is located here:
 ```
 
 The workflow performs the following automated checks:
-- **Syntax Check:** Parses `.ps1` files and fails if PowerShell syntax errors are found.
+- **Syntax Check:** Parses `.ps1` files in both `pwsh` and Windows PowerShell 5.1, and fails if syntax errors are found.
 - **PSScriptAnalyzer:** Runs static code analysis and fails on Warnings or Errors.
 - **Pester Tests:** Runs unit tests for internal functions.
 - **Forbidden Patterns:** Scans for dangerous patterns like `Invoke-Expression`, `DownloadString`, base64, etc.
 - **Dry-run Audit:** Executes the script in `Audit` mode to ensure it runs correctly without modifying the runner configuration.
+- **GUI Self-test:** Runs `Win11-25H2-CalmMode-GUI.ps1 -SelfTest` under Windows PowerShell 5.1.

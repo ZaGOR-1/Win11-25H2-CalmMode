@@ -64,6 +64,10 @@ Describe "Win11-25H2-CalmMode Pure Functions" {
             Format-RegValueLine -Name "M" -Type "MultiString" -Value @("a", "b") -Delete $false |
                 Should -Be '"M"=hex(7):61,00,00,00,62,00,00,00,00,00'
         }
+        It "encodes Binary as hex bytes" {
+            Format-RegValueLine -Name "B" -Type "Binary" -Value ([byte[]](1, 2, 255)) -Delete $false |
+                Should -Be '"B"=hex:01,02,ff'
+        }
         It "formats a Delete for the new types the same way" {
             Format-RegValueLine -Name "Q" -Type "QWord" -Value 1 -Delete $true | Should -Be '"Q"=-'
             Format-RegValueLine -Name "M" -Type "MultiString" -Value @("a") -Delete $true | Should -Be '"M"=-'
@@ -543,6 +547,15 @@ Describe "Config mechanism (integration)" {
             & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -RestoreFrom $empty *> $null
             $code = $LASTEXITCODE
             Remove-Item -Recurse -Force $empty -ErrorAction SilentlyContinue
+            $code | Should -Be 1
+        }
+        It "exits 1 when a folder has .reg files but no rollback.reg" {
+            $dir = Join-Path $env:TEMP ("calm-reg-no-rollback-" + [Guid]::NewGuid().ToString("N"))
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            Set-Content -Path (Join-Path $dir "backup.reg") -Value "Windows Registry Editor Version 5.00" -Encoding Unicode
+            & $script:psExe -NoProfile -ExecutionPolicy Bypass -File $script:engine -RestoreFrom $dir *> $null
+            $code = $LASTEXITCODE
+            Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
             $code | Should -Be 1
         }
     }

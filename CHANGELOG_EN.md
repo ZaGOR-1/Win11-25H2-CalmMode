@@ -4,6 +4,41 @@ All notable changes to this project are documented in this file.
 
 This project uses a simple versioning style: `vMAJOR.MINOR`.
 
+## [Unreleased]
+
+## [v2.11] - 2026-06-24
+
+### Fixed
+
+- The GUI with Ukrainian strings now parses correctly in Windows PowerShell 5.1: the file is saved as
+  UTF-8 with BOM, and the launcher uses the explicit 64-bit Windows PowerShell path.
+- CI now also parses `.ps1` files in Windows PowerShell 5.1 and runs the GUI `-SelfTest`, so encoding
+  regressions do not pass unnoticed.
+- Post-`Audit`/`Apply` hints now show the stable `Win11-25H2-CalmMode.ps1` filename instead of a
+  non-existent versioned `.ps1`.
+- `-RestoreFrom` no longer imports the first arbitrary `.reg` in a folder: folders must contain
+  `rollback.reg`; any other `.reg` must be passed as a direct file path.
+- `rollback.reg` now preserves the previous registry value type when a value already existed.
+- HTML/GUI `Needs attention` now checks `Support`/`Confidence` in addition to `Status`, so
+  `RequiresVerification` / `MaybeIgnoredOnEdition` rows are not hidden when the registry value already matches.
+- `Sign-CalmMode.ps1` is now included in the release archive because README documents that helper.
+
+### Documentation
+
+- README is synced with the current catalog: `ConnectedSearchUseWeb = 0`, the correct
+  `SearchboxTaskbarMode` path, separate `Status` / `Support` / `Confidence` explanations,
+  current Appx cleanup wording, and the CI GUI self-test.
+- Added English `README_EN.md`; the main `README.md` remains Ukrainian and links to the English
+  version with a GitHub-friendly **English** link.
+- `GEMINI.md`, `docs/ROADMAP.md`, `docs/RELEASE.md`, and the release-check prompt now reflect
+  shipped `-RestoreFrom`, bilingual changelogs, GUI UA/EN, and Windows PowerShell 5.1 checks.
+
+### GUI
+
+- The **EN / UA** toggle now localizes not only buttons and blocks, but all 112 tweak names,
+  the selected-tweak details, categories, and item names in the results grid.
+- GUI `-SelfTest` now verifies that every tweak exported by `-ExportCatalog` has a Ukrainian display string.
+
 ## [v2.10] - 2026-06-20
 
 ### Added
