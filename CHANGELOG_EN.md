@@ -6,6 +6,35 @@ This project uses a simple versioning style: `vMAJOR.MINOR`.
 
 ## [Unreleased]
 
+## [v2.12] - 2026-06-24
+
+### GUI
+
+- Started implementing the GUI improvement plan: added a compact top status panel with build/edition/mode
+  and safety badges, a two-pane `Categories -> Tweaks` navigation, and `Confidence`, `Risk`, and
+  `Registry` columns for each tweak.
+- The visible GUI now surfaces `Official` / `UISetting` / `RequiresVerification` / `BestEffort` /
+  `Deprecated` as colored rows and risk labels, while the internal config model remains compatible
+  with the previous `blocks` + `disabledTweaks` format.
+- The selected-tweak detail panel now shows registry path/name/value, support/build/edition,
+  risk, admin requirement, restart note, and rollback note; Appx cleanup explicitly warns that
+  `rollback.reg` does not restore removed Appx packages.
+- `Apply` is disabled until the current selection has a successful `Audit`; any category/tweak
+  selection change resets the gate and requires running Audit again.
+- The results window now has `Summary`, `Details`, and `Raw log` tabs: summary counts key statuses,
+  details keeps the attention-filtered table, and raw shows the actual JSON report.
+- Improved GUI list readability: column widths now adapt to resize/splitter changes, the left pane
+  is wider by default, and long category/tweak names have tooltips.
+- Increased the default GUI window size and starts the splitter closer to the middle so the `Tweaks`
+  table immediately shows the `Confidence`, `Risk`, and `Registry` columns.
+
+### Documentation
+
+- Root `README.md` and `README_EN.md` are now short landing pages.
+- Detailed instructions moved into smaller `docs/USAGE_*`, `docs/REPORTS_ROLLBACK_*`,
+  and `docs/POLICIES_*` files.
+- The release archive now includes `docs/`, and `checksums.txt` hashes files recursively.
+
 ## [v2.11] - 2026-06-24
 
 ### Fixed

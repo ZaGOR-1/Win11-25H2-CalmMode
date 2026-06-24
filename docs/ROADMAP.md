@@ -1,149 +1,154 @@
-# ROADMAP — Win11 25H2 CalmMode
+# ROADMAP — Win11 25H2 Calm Mode
 
-Лишилися тільки **незроблені** пункти. Кожен має чесний вердикт «чи реально треба».
-Усе — в рамках філософії: **безпека, прозорість, відкатність, opt-in для ризикованого,
-без зовнішніх залежностей, сумісність із Windows PowerShell 5.1**.
+Це живий список тільки майбутніх задач. Уже виконані релізи, фікси, локалізація, cleanup root-файлів,
+розбиття README на `docs/` і GUI фази 1-6 тут більше не зберігаються — вони мають жити в changelog.
 
-Легенда: ✅ варто зробити · ⚠️ опційно (цінність помірна) · ❌ радше не робити.
-Ризик: 🟢 низький · 🟡 середній · 🔴 обережно.
+Принципи незмінні: безпека, прозорість, backup/rollback, opt-in для ризикових дій, без зовнішніх
+runtime-залежностей, основна сумісність із Windows PowerShell 5.1.
 
-> Статус (2026-06-24): `VERSION = 2.10`, у changelog є `[Unreleased]` із документаційними,
-> GUI/CI і rollback-фіксами поверх 2.10. Перевірено локально: Windows PowerShell 5.1 parser OK
-> для основного скрипта/GUI/службових скриптів, GUI `-SelfTest` OK, `Audit -NoReport` EXIT=0,
-> `-ExportCatalog` OK, safe `-RestoreFrom` error-path OK. Повний Pester 4 локально не проганявся:
-> у середовищі доступний Pester 3.4.0, тоді як CI ставить Pester 4.10.1. Деталі — в `CHANGELOG_UA/EN`.
+Поточний стан на 2026-06-24:
 
----
+- `VERSION = 2.12`;
+- `[Unreleased]` порожній після релізу GUI/docs оновлень;
+- локально проходили Windows PowerShell 5.1 parse, GUI `-SelfTest`, `git diff --check`;
+- повний живий `Apply -> reboot -> Verify -> Restore` у VM ще не задокументований.
 
-## ✅ 0. Реліз — виконано (2026-06-20)
-
-- [x] **Зарелізено вже зроблене.** Фази P1–P4 (`v2.6.1`→`v2.9`) випущено одним релізом `v2.9`:
-  два коміти логічними групами (feat+tests `06cb38a`, docs `7198192`), ZIP `Win11-25H2-CalmMode-v2.9.zip`
-  (9 файлів, `Sign-CalmMode.ps1` свідомо виключено; SHA256 `574C0DCC…D52E1D`), `main` + анотований
-  тег `v2.9` запушені.
+Легенда: ✅ варто зробити · ⚠️ опційно · 🟢 низький ризик · 🟡 середній ризик · 🔴 обережно.
 
 ---
 
-## 1. Довіра до Apply-шляху — найбільша реальна прогалина
+## 1. Жива довіра до Apply-шляху
 
-- [ ] **VM-валідація живого Apply.** За всю розробку `Apply`, реальний `-RestoreFrom` (`reg import`),
-  `-EnableSystemProtection` і GUI «Undo last Apply» гналися лише **статично + error-шляхи**.
-  Потрібен документований прогін у чистій VM: `Audit` (без/з адміном) → `Apply` → **повторний
-  `Apply` поспіль** (має бути все `AlreadyConfigured`, не `Changed` — жива перевірка ідемпотентності)
-  → reboot → `Verify` → `-RestoreFrom` → `Verify`. Результати (звіти/скріншоти) → `docs/vm-validation.md`.
-  **Чи треба:** ✅ так — це єдине, що **матеріально** підвищує довіру до інструмента, який змінює
-  систему. Автотести вже покривають логіку (зокрема ідемпотентність на рівні unit), але живий
-  запис+відкат жодного разу не підтверджений. Обмеження: потребує VM і ручної роботи, у CI не
-  автоматизується. 🟡
+- [ ] **VM-валідація повного циклу.** Потрібен документований прогін у чистій Windows 11 25H2 VM:
+  `Audit` без admin → `Audit` з admin → `Apply` → повторний `Apply` → reboot → `Verify` →
+  `Undo last Apply` / `-RestoreFrom` → повторний `Verify`.
 
-> Колишній окремий пункт «тест ідемпотентності» **закрито** автоматичним тестом у `v2.9`
-> (`Apply` на вже коректному значенні → `AlreadyConfigured`). Тут лишається тільки жива перевірка
-> в межах VM-прогону вище.
+  Очікувані артефакти:
+  - HTML/CSV/JSON звіти;
+  - короткий документ `docs/VM_VALIDATION_UA.md` або `docs/VM_VALIDATION.md`;
+  - список знайдених відмінностей між Audit/Apply/Verify;
+  - окреме підтвердження, що rollback registry працює, а Appx cleanup не відновлюється через `.reg`.
 
----
-
-## 2. Зручність (опційно)
-
-- [ ] **`-CompareReports <before.json> <after.json>`** — діф двох прогонів: що змінило статус/значення.
-  Корисно «до/після Apply» і для регресій; самодостатньо, read-only.
-  **Чи треба:** ⚠️ найкорисніший з опційних. Реальна цінність є, але не критично — JSON-звіти й так
-  можна порівняти руками/`git diff`. Робити, якщо хочеться полірування. 🟢
-
-- [ ] **Готові пресети конфігів** (`presets/minimal|balanced|strict.json`) + «Load preset» у GUI.
-  **Чи треба:** ⚠️ маргінально. У GUI вже є **Save/Load config**, а в CLI — `-ConfigPath`/`-Skip`/`-Only`;
-  пресети лише додають приклади. Дешево й безризиково, але майже дублює наявне. 🟢
-
-> Закрито: локалізація GUI UA/EN уже є, GUI лишається тонким шаром над основним скриптом.
+  **Чи треба:** ✅ так. Це найбільша реальна прогалина довіри, бо unit/self-test не замінюють живий
+  запис у registry, reboot і restore. 🟡
 
 ---
 
-## 3. Контент — нові політики (умовно/постійно)
+## 2. GUI polish, фаза 7
 
-- [x] **Account/subscription нотифікації в Start (`v2.10`).** Додано підтверджену пару:
-  `DisableAccountNotifications` (policy, `AccountNotifications.admx`, 24H2/26100+, Pro+) і
-  `Start_AccountNotifications` (UISetting, усі редакції, покриває Home). Звірено з Microsoft Learn
-  (Notifications CSP). Backup уже покриває обидва шляхи рекурсивно.
-- [x] **Повний аудит актуальності всіх ~110 твіків (`v2.10`).** Кожен звірено з Microsoft Learn / ADMX.
-  **0 deprecated/removed.** Виправлено web-search value на **`ConnectedSearchUseWeb=0`** (реальне
-  value name; попередня назва була no-op); шлях `SearchboxTaskbarMode` → `CurrentVersion\Search` (Win11-локація,
-  підтверджено на живій 25H2); 4 HKCU Spotlight-політики → лише Ent/Edu/IoT (без Pro); кілька правок
-  `Confidence`/нотаток. Деталі — в `CHANGELOG_UA/EN`.
+- [ ] **Візуальна перевірка GUI на різних масштабах.** Перевірити 100%, 125%, 150%, мале вікно,
+  resize, splitter, UA/EN, довгі назви, вкладки результатів і tooltip-и.
 
-### Кандидати на додавання (чернетка — потім переробимо)
+- [ ] **Оновити screenshots у README/docs після стабілізації GUI.** Поточний інтерфейс суттєво
+  змінився, тому старі скріншоти або відсутність скріншотів зменшують зрозумілість.
 
-> Усе нижче — **пропозиції**, які вписуються в «calm» (менше нав'язування, без ламання Windows).
-> Кожен кандидат проходить дисципліну `add-policy` **перед** додаванням: звірка з Microsoft Learn,
-> точний Path/Name/Type, `MinBuild`/`MinUBR`, `Editions`, чесний `Confidence`, тести, README/CHANGELOG.
-> Поки **жоден не доданий** — нічого не подавати як «гарантовано працює».
+- [ ] **Перевірити UX після реального Apply.** Окремо подивитися, чи status line, Apply gate,
+  Summary/Details/Raw і rollback flow зрозумілі після elevated Apply.
 
-**3a. Edge quiet mode — розширення** (блок уже є, низький ризик 🟢)
-- [ ] `ShowRecommendationsEnabled=0` — прибрати «рекомендації»/підказки фіч Edge. *Впевненість: висока.*
-- [ ] `EdgeShoppingAssistantEnabled=0` — shopping/купони-попапи. *Висока.*
-- [ ] `PersonalizationReportingEnabled=0` — менше трекінгу для реклами. *Висока.*
-- [ ] `SpotlightExperiencesAndRecommendationsEnabled=0` — Edge spotlight. *Середня.*
-- [ ] `NewTabPageContentEnabled=0` — прибрати MSN-стрічку на новій вкладці. *Середня — змінює NTP, радше opt-in.*
-
-**3b. Історія активності / Timeline** (privacy, `HKLM\…\Policies\Microsoft\Windows\System`, 🟢)
-- [ ] `EnableActivityFeed=0`, `PublishUserActivities=0`, `UploadUserActivities=0` — менше збору/синхронізації
-  «що ви робили». Документовані ADMX, не ламають функціонал. *Впевненість: висока.*
-
-**3c. Онлайн-контент у Settings** (🟢)
-- [ ] `AllowOnlineTips=0` (`HKLM\…\Policies\Microsoft\Windows\Explorer`) — Settings перестає тягнути
-  онлайн-підказки. Документована ADMX. *Впевненість: висока.*
-
-**3d. Пошук на таскбарі — policy-версія** (🟡, opt-in)
-- [ ] `ConfigureSearchOnTaskbarMode` (24H2+, Pro+) — policy-аналог наявного UI-твіка `SearchboxTaskbarMode`.
-  Жорсткіша (блокує перемикач у Settings), тому **тільки opt-in**, не за замовчуванням.
-
-**Рекомендований перший набір** (баланс користь×безпека×документованість): **3b + 3c** + найбезпечніші
-з 3a (`ShowRecommendationsEnabled`, `EdgeShoppingAssistantEnabled`, `PersonalizationReportingEnabled`).
-
-**Свідомо НЕ кандидати** (це вже ламання функціоналу, не «calm»): `DisableSearch=1` (повне вимкнення
-пошуку), масове прибирання індексації, вимкнення clipboard history.
-
-**Перевірені й відкинуті** (немає стабільного ключа / вже покрито): Start «Phone Link»/mobile devices
-(нема задокументованої policy); `TurnOffCopilot` під `WindowsCopilot` (Learn описує лише
-`RemoveMicrosoftCopilotApp` — уже в каталозі); lock-screen Spotlight (покрито CDM `RotatingLockScreen*`/
-`SubscribedContent-338387`); Recall/Click-to-Do/Paint AI (уже в каталозі).
+  **Чи треба:** ✅ так перед великим публічним релізом GUI. Ризик низький, але потрібна ручна перевірка. 🟢
 
 ---
 
-## 4. Гігієна (трив'яльне, але реальне)
+## 3. Безпечний one-command bootstrap без `iex`
 
-- [x] **Прибрати MD-крихту.** `PROMPT.md` — **0 байт** (видалити або наповнити). Звірити
-  `docs/RELEASE.md`/`GEMINI.md`/`AGENTS.md` на актуальність (наповнені, але могли застаріти після P1–P4).
-  **Чи треба:** ✅ так, дешево й охайно. Порожній `PROMPT.md` — явний непотріб. 🟢
+- [ ] **Додати безпечний bootstrap/install script.** Мета: дати користувачу коротку команду, яка
+  скачує release zip, перевіряє hash, розпаковує в локальну папку і запускає GUI.
+
+  Важливі обмеження:
+  - не використовувати `irm ... | iex`;
+  - не виконувати remote code напряму;
+  - завантажувати тільки release archive;
+  - перевіряти SHA256;
+  - запускати GUI локально;
+  - default flow лишається Audit-first.
+
+  **Чи треба:** ⚠️ корисно для зручності, але тільки якщо реалізовано без `Invoke-Expression` і без
+  remote-code execution. 🟡
 
 ---
 
-## ❌ Свідомо НЕ робимо
+## 4. Reports tooling
 
-- **Read-only перевірка нової версії через мережу** (колишній 6.9). Додає мережеву залежність заради
-  косметики — суперечить «без зовнішніх залежностей»; користувач і так бачить релізи на GitHub.
-- **Рефакторинг рушія на модулі.** Моноліт робочий, покритий 68 тестами, роздається одним `.ps1`.
-  Розбивка = ризик без користувацької цінності (CLAUDE.md: «не роби rewrite без потреби»).
-- **Компільований `.exe` / base64 / завантаження коду** — проти філософії (AV/SmartScreen, прозорість).
-- Будь-що із забороненого списку (нижче).
+- [ ] **`-CompareReports <before.json> <after.json>`.** Read-only режим для порівняння двох JSON-звітів:
+  що змінило `Status`, `CurrentValue`, `DesiredValue`, `Support`, `Confidence`.
+
+  Корисні сценарії:
+  - Audit до Apply проти Verify після reboot;
+  - regression check між версіями скрипта;
+  - швидкий текстовий summary для GitHub issue.
+
+  **Чи треба:** ⚠️ корисне полірування, але не критично, бо JSON можна порівнювати вручну. 🟢
 
 ---
 
-## Рекомендований порядок
+## 5. Presets
 
-1. ~~**Зарелізити `v2.6.1`→`v2.9`** (розділ 0)~~ ✅ виконано (тег `v2.9` запушено).
-2. **VM-валідація Apply** (розділ 1) — коли буде VM; закриває головну прогалину довіри. ← наступне
-3. **`-CompareReports`** (розділ 2) — якщо хочеться полірування.
-4. **Нові політики** (розділ 3) — є чернетка кандидатів (3a–3d); брати набір 3b+3c+безпечні з 3a, кожен через `add-policy`.
-5. ~~**MD-гігієна** (розділ 4) — будь-коли, дешево.~~ ✅ виконано.
+- [ ] **Готові JSON-пресети конфігів.** Наприклад:
+  - `presets/minimal.json`;
+  - `presets/balanced.json`;
+  - `presets/strict.json`.
 
-> Підсумок чесно: **обов'язкове — лише розділ 0** (випустити зроблене) і, як хочете реальної
-> довіри до Apply, **розділ 1** (VM). Решта — приємні, але не конче потрібні; пресети/локалізація
-> майже дублюють наявне.
+  GUI може отримати `Load preset`, але це має лишатися тонким шаром над наявним `-ConfigPath`.
+  Presets не повинні вмикати ризиковий Appx cleanup без явної назви/попередження.
 
-> Будь-яка зміна, що впливає на параметри/поведінку/звіти, тягне оновлення `README.md` +
-> `CHANGELOG_UA/EN` і, за потреби, bump версії. GUI лишається тонким шаром: уся логіка політик —
-> у рушії `Win11-25H2-CalmMode.ps1` (єдине джерело істини).
->
-> Незмінні «не можна» (CLAUDE.md): не вимикати Defender/Firewall/Windows Update service, не видаляти
-> Store/WebView2/.NET/VC++/сертифікати, без `Invoke-Expression`/remote code/encoded payloads, без
-> блокування Microsoft-доменів у hosts, Appx cleanup лише opt-in і best-effort, чесність щодо
-> build/edition-обмежень.
+  **Чи треба:** ⚠️ опційно. Це зручно для користувачів, але частково дублює Save/Load config. 🟢
+
+---
+
+## 6. Майбутні policy-кандидати
+
+Кожен новий твік має проходити окрему перевірку перед додаванням:
+
+- Microsoft Learn / ADMX / Edge policy reference;
+- точні `Path`, `Name`, `Type`, desired value;
+- `MinBuild` / `MinUBR`;
+- edition limitations;
+- чесний `Confidence`;
+- tests;
+- README/docs/changelog.
+
+### 6a. Edge quiet mode — розширення
+
+- [ ] `ShowRecommendationsEnabled=0` — менше рекомендацій/підказок Edge.
+- [ ] `EdgeShoppingAssistantEnabled=0` — shopping/coupons UI.
+- [ ] `PersonalizationReportingEnabled=0` — менше personalization reporting.
+- [ ] `SpotlightExperiencesAndRecommendationsEnabled=0` — Edge spotlight/recommendations.
+- [ ] `NewTabPageContentEnabled=0` — MSN/content на новій вкладці; краще opt-in, бо змінює NTP.
+
+**Чи треба:** ⚠️ добрі кандидати, але тільки після повторної звірки з актуальною Edge policy reference. 🟢
+
+### 6b. Activity history / Timeline
+
+- [ ] `EnableActivityFeed=0`;
+- [ ] `PublishUserActivities=0`;
+- [ ] `UploadUserActivities=0`.
+
+**Чи треба:** ⚠️ добре вписується в privacy/calm, якщо Microsoft docs підтверджують актуальність на 25H2. 🟢
+
+### 6c. Online tips у Settings
+
+- [ ] `AllowOnlineTips=0`.
+
+**Чи треба:** ⚠️ потенційно корисний calm-твік, але треба ще раз підтвердити шлях/edition/build. 🟢
+
+### 6d. Policy-версія taskbar search
+
+- [ ] `ConfigureSearchOnTaskbarMode`.
+
+**Чи треба:** ⚠️ тільки opt-in. Це жорсткіше за UISetting `SearchboxTaskbarMode`, бо може блокувати
+перемикач у Settings. 🟡
+
+---
+
+## 7. Не планувати без окремого рішення
+
+Ці напрямки не входять у roadmap, доки не буде дуже чіткої причини:
+
+- повне вимкнення Windows Search або індексації;
+- вимкнення Defender, Firewall або Windows Update service;
+- видалення Store, WebView2, .NET, VC++ runtimes, сертифікатів;
+- блокування Microsoft-доменів у `hosts`;
+- `Invoke-Expression`, encoded payloads або remote-code execution;
+- агресивний Appx cleanup за замовчуванням;
+- переписування рушія на модулі без конкретної користувацької користі;
+- компільований `.exe`, якщо він погіршує прозорість/довіру.

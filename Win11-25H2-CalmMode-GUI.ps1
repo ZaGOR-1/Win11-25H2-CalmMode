@@ -34,9 +34,54 @@ $script:Lang = "EN"
 $script:UIStrings = @{
     "EN" = @{
         "FormTitle" = "Win11 25H2 Calm Mode v{0} - configuration"
-        "Header" = "Detected: Build {0}.{1}, edition group {2}. Check the blocks and tweaks you want, then run Audit first (read-only)."
+        "Header" = "Select the categories and tweaks you want, run Audit first, then Apply only after reviewing the results."
+        "HeaderProduct" = "Windows 11 25H2"
+        "HeaderBuild" = "Build {0}.{1}"
+        "HeaderEdition" = "Edition: {0}"
+        "HeaderMode" = "Mode: Audit first"
+        "BadgeSafeDefault" = "Safe by default"
+        "BadgeAuditFirst" = "Audit first"
+        "BadgeNoChanges" = "No changes until Apply"
         "FilterLabel" = "Filter:"
         "FilterClear" = "Clear"
+        "CategoryHeader" = "Categories"
+        "TweaksHeader" = "Tweaks"
+        "ColTweak" = "Tweak"
+        "ColConfidence" = "Confidence"
+        "ColRisk" = "Risk"
+        "ColRegistry" = "Registry"
+        "RiskSafe" = "Safe"
+        "RiskNeedsVerify" = "Needs verify"
+        "RiskOptIn" = "Opt-in"
+        "RiskMayBeIgnored" = "May be ignored"
+        "RiskLegacy" = "Legacy"
+        "RiskUISetting" = "UI setting"
+        "DetailSupport" = "Support: {0}"
+        "DetailRisk" = "Risk: {0}"
+        "DetailAdminRequired" = "Admin: required for HKLM / system-wide Apply"
+        "DetailAdminUser" = "Admin: current-user value, but GUI Apply still runs elevated"
+        "DetailRestartNone" = "Restart: usually not required"
+        "DetailRestartExplorer" = "Restart: Explorer refresh may be needed"
+        "DetailRestartReboot" = "Restart: reboot recommended"
+        "DetailRestartApp" = "Restart: close/reopen the affected app if needed"
+        "DetailRollbackRegistry" = "Rollback: rollback.reg restores this registry value."
+        "DetailRollbackAppx" = "Rollback: registry rollback does NOT restore removed Appx packages."
+        "BlockDetailDesc" = "Block: {0}`r`nSelected tweaks: {1}/{2}`r`nRisk: {3}`r`nApply is disabled until a successful Audit after any selection change."
+        "StatusAuditRequired" = "Selection changed. Run Audit again before Apply."
+        "StatusAuditPassedApplyEnabled" = "Audit complete: no errors. Apply is now available after review."
+        "StatusAuditErrorsApplyDisabled" = "Audit complete, but errors were found. Apply remains disabled."
+        "ApplyBlockedRunAudit" = "Run Audit first. Apply is disabled until the current selection has a successful Audit."
+        "TabSummary" = "Summary"
+        "TabDetails" = "Details"
+        "TabRaw" = "Raw log"
+        "SummaryMetric" = "{0}: {1}"
+        "SummaryWouldChange" = "Would change"
+        "SummaryAlreadyOk" = "Already OK"
+        "SummaryChanged" = "Changed"
+        "SummaryNeedsVerification" = "Needs verification"
+        "SummaryUnsupported" = "Unsupported"
+        "SummaryErrors" = "Errors"
+        "SummaryTotal" = "Total"
         "BtnSelectAll" = "Select all"
         "BtnSelectNone" = "Select none"
         "BtnSave" = "Save config..."
@@ -87,9 +132,54 @@ $script:UIStrings = @{
     }
     "UA" = @{
         "FormTitle" = "Win11 25H2 Calm Mode v{0} - конфігурація"
-        "Header" = "Виявлено: Build {0}.{1}, редакція {2}. Позначте потрібні блоки/твіки та запустіть Audit (без змін)."
+        "Header" = "Позначте потрібні категорії й твіки, спочатку запустіть Аудит, а Apply - лише після перегляду результатів."
+        "HeaderProduct" = "Windows 11 25H2"
+        "HeaderBuild" = "Build {0}.{1}"
+        "HeaderEdition" = "Редакція: {0}"
+        "HeaderMode" = "Режим: спочатку Аудит"
+        "BadgeSafeDefault" = "Безпечно за замовчуванням"
+        "BadgeAuditFirst" = "Спочатку Аудит"
+        "BadgeNoChanges" = "Без змін до Apply"
         "FilterLabel" = "Фільтр:"
         "FilterClear" = "Очистити"
+        "CategoryHeader" = "Категорії"
+        "TweaksHeader" = "Твіки"
+        "ColTweak" = "Твік"
+        "ColConfidence" = "Надійність"
+        "ColRisk" = "Ризик"
+        "ColRegistry" = "Реєстр"
+        "RiskSafe" = "Безпечно"
+        "RiskNeedsVerify" = "Перевірити"
+        "RiskOptIn" = "Opt-in"
+        "RiskMayBeIgnored" = "Може ігноруватись"
+        "RiskLegacy" = "Застаріле"
+        "RiskUISetting" = "UI setting"
+        "DetailSupport" = "Підтримка: {0}"
+        "DetailRisk" = "Ризик: {0}"
+        "DetailAdminRequired" = "Admin: потрібен для HKLM / системного Apply"
+        "DetailAdminUser" = "Admin: значення поточного користувача, але GUI Apply все одно запускається elevated"
+        "DetailRestartNone" = "Restart: зазвичай не потрібен"
+        "DetailRestartExplorer" = "Restart: може знадобитися оновлення Провідника"
+        "DetailRestartReboot" = "Restart: рекомендоване перезавантаження"
+        "DetailRestartApp" = "Restart: за потреби закрийте/відкрийте відповідну програму"
+        "DetailRollbackRegistry" = "Rollback: rollback.reg відновлює це registry value."
+        "DetailRollbackAppx" = "Rollback: registry rollback НЕ повертає видалені Appx пакети."
+        "BlockDetailDesc" = "Блок: {0}`r`nВибрано твіків: {1}/{2}`r`nРизик: {3}`r`nApply вимкнений до успішного Audit після кожної зміни вибору."
+        "StatusAuditRequired" = "Вибір змінено. Запустіть Audit ще раз перед Apply."
+        "StatusAuditPassedApplyEnabled" = "Audit завершено без помилок. Apply тепер доступний після перегляду результатів."
+        "StatusAuditErrorsApplyDisabled" = "Audit завершено, але знайдено помилки. Apply лишається вимкненим."
+        "ApplyBlockedRunAudit" = "Спочатку запустіть Audit. Apply вимкнений, доки поточний вибір не пройде успішний Audit."
+        "TabSummary" = "Summary"
+        "TabDetails" = "Details"
+        "TabRaw" = "Raw log"
+        "SummaryMetric" = "{0}: {1}"
+        "SummaryWouldChange" = "Зміниться"
+        "SummaryAlreadyOk" = "Вже OK"
+        "SummaryChanged" = "Змінено"
+        "SummaryNeedsVerification" = "Потребує перевірки"
+        "SummaryUnsupported" = "Не підтримується"
+        "SummaryErrors" = "Помилки"
+        "SummaryTotal" = "Всього"
         "BtnSelectAll" = "Вибрати все"
         "BtnSelectNone" = "Зняти все"
         "BtnSave" = "Зберегти..."
@@ -158,6 +248,22 @@ function Update-UILanguage {
     if ($header -and $catalog) {
         $header.Text = Get-String "Header" @($catalog.Build, $catalog.UBR, $catalog.EditionGroup)
     }
+    if ($lblProduct) { $lblProduct.Text = Get-String "HeaderProduct" }
+    if ($lblBuild) { $lblBuild.Text = Get-String "HeaderBuild" @($catalog.Build, $catalog.UBR) }
+    if ($lblEdition) { $lblEdition.Text = Get-String "HeaderEdition" @($catalog.EditionGroup) }
+    if ($lblMode) { $lblMode.Text = Get-String "HeaderMode" }
+    if ($badgeSafe) { $badgeSafe.Text = Get-String "BadgeSafeDefault" }
+    if ($badgeAudit) { $badgeAudit.Text = Get-String "BadgeAuditFirst" }
+    if ($badgeNoChanges) { $badgeNoChanges.Text = Get-String "BadgeNoChanges" }
+    if ($lblCategories) { $lblCategories.Text = Get-String "CategoryHeader" }
+    if ($lblTweaks) { $lblTweaks.Text = Get-String "TweaksHeader" }
+    if ($categoryList -and $categoryList.Columns.Count -gt 0) { $categoryList.Columns[0].Text = Get-String "CategoryHeader" }
+    if ($tweakList -and $tweakList.Columns.Count -ge 4) {
+        $tweakList.Columns[0].Text = Get-String "ColTweak"
+        $tweakList.Columns[1].Text = Get-String "ColConfidence"
+        $tweakList.Columns[2].Text = Get-String "ColRisk"
+        $tweakList.Columns[3].Text = Get-String "ColRegistry"
+    }
     if ($lblFilter) { $lblFilter.Text = Get-String "FilterLabel" }
     if ($btnFilterClear) { $btnFilterClear.Text = Get-String "FilterClear" }
     if ($btnSelectAll) { $btnSelectAll.Text = Get-String "BtnSelectAll" }
@@ -176,7 +282,7 @@ function Update-UILanguage {
         }
     }
 
-    # Refresh tree blocks if needed
+    # Refresh canonical block/tweak labels.
     if ($script:BlockEntries) {
         foreach ($entry in $script:BlockEntries) {
             $bk = $entry.Node.Tag.Key
@@ -193,13 +299,12 @@ function Update-UILanguage {
 
     if ($applyFilter) { & $applyFilter }
 
-    # Update current selected description
-    if ($tree -and $tree.SelectedNode) {
-        # Trigger re-selection logic to update description
-        $tmp = $tree.SelectedNode
-        $tree.SelectedNode = $null
-        $tree.SelectedNode = $tmp
+    if ($tweakList -and $tweakList.SelectedItems.Count -gt 0) {
+        Update-DescriptionFromTag -Tag $tweakList.SelectedItems[0].Tag
+    } elseif ($categoryList -and $categoryList.SelectedItems.Count -gt 0) {
+        Update-DescriptionFromTag -Tag $categoryList.SelectedItems[0].Tag.Node.Tag
     }
+    if ($updateListColumnLayout) { & $updateListColumnLayout }
 }
 
 
@@ -551,6 +656,157 @@ function Get-TweakNodeText {
     return ("{0}  [{1}]" -f (Get-LocalizedTweakDescription -Detail $Detail), (Get-LocalizedConfidence $Detail.Confidence))
 }
 
+function Get-RegistryPreview {
+    param([object]$Detail)
+    if ($null -eq $Detail) { return "" }
+    return ("{0}\{1} = {2}" -f $Detail.Path, $Detail.Name, $Detail.Value)
+}
+
+function Get-RiskKey {
+    param([object]$Detail, [string]$BlockKey)
+    if ($null -eq $Detail) {
+        if ($BlockKey -match "^Remove") { return "RiskOptIn" }
+        return "RiskSafe"
+    }
+    switch ([string]$Detail.Confidence) {
+        "RequiresVerification" { return "RiskNeedsVerify" }
+        "BestEffort" { return "RiskOptIn" }
+        "Deprecated" { return "RiskLegacy" }
+        "UISetting" { return "RiskUISetting" }
+        default {
+            if ($BlockKey -match "^Remove") { return "RiskOptIn" }
+            return "RiskSafe"
+        }
+    }
+}
+
+function Get-RiskText {
+    param([object]$Detail, [string]$BlockKey)
+    return (Get-String (Get-RiskKey -Detail $Detail -BlockKey $BlockKey))
+}
+
+function Get-ConfidenceBackColor {
+    param([string]$Confidence)
+    switch ($Confidence) {
+        "Official" { return [System.Drawing.Color]::FromArgb(232, 246, 239) }
+        "RequiresVerification" { return [System.Drawing.Color]::FromArgb(255, 248, 219) }
+        "BestEffort" { return [System.Drawing.Color]::FromArgb(232, 240, 247) }
+        "Deprecated" { return [System.Drawing.Color]::FromArgb(255, 236, 224) }
+        "UISetting" { return [System.Drawing.Color]::FromArgb(241, 243, 245) }
+        default { return [System.Drawing.Color]::White }
+    }
+}
+
+function Get-BlockRiskText {
+    param($Entry)
+    if ($Entry.Node.Tag.Key -match "^Remove") { return Get-String "RiskOptIn" }
+    $hasVerify = $false
+    $hasBestEffort = $false
+    $hasDeprecated = $false
+    foreach ($child in $Entry.Children) {
+        if ($null -eq $child.Tag -or $child.Tag.Kind -ne "tweak") { continue }
+        switch ([string]$child.Tag.Detail.Confidence) {
+            "RequiresVerification" { $hasVerify = $true }
+            "BestEffort" { $hasBestEffort = $true }
+            "Deprecated" { $hasDeprecated = $true }
+        }
+    }
+    if ($hasVerify) { return Get-String "RiskNeedsVerify" }
+    if ($hasBestEffort) { return Get-String "RiskOptIn" }
+    if ($hasDeprecated) { return Get-String "RiskLegacy" }
+    return Get-String "RiskSafe"
+}
+
+function Get-SelectedTweakCount {
+    param($Entry)
+    $n = 0
+    foreach ($child in $Entry.Children) {
+        if ($child.Checked) { $n++ }
+    }
+    return $n
+}
+
+function Get-SupportSummary {
+    param([object]$Detail)
+    $parts = New-Object System.Collections.ArrayList
+    $minBuild = "$($Detail.MinBuild)$(if ($Detail.MinUBR -gt 0) { ".$($Detail.MinUBR)" })"
+    if ($Detail.MinBuild -gt 0) { [void]$parts.Add("build >= $minBuild") }
+    $ed = if ($Detail.Editions -and $Detail.Editions.Count -gt 0) { ($Detail.Editions -join ", ") } else { Get-String "EditionsAll" }
+    [void]$parts.Add("editions: $ed")
+    [void]$parts.Add("confidence: $(Get-LocalizedConfidence ([string]$Detail.Confidence))")
+    return ($parts -join "; ")
+}
+
+function Get-AdminDetailText {
+    param([object]$Detail, [string]$BlockKey)
+    if ($BlockKey -match "^Remove" -or [string]$Detail.Path -like "HKLM:*") {
+        return Get-String "DetailAdminRequired"
+    }
+    return Get-String "DetailAdminUser"
+}
+
+function Get-RestartDetailText {
+    param([object]$Detail, [string]$BlockKey)
+    if ($BlockKey -eq "LongPaths" -or $BlockKey -eq "FastStartupDisable") { return Get-String "DetailRestartReboot" }
+    if ($BlockKey -eq "StartTaskbar" -or $BlockKey -eq "Widgets" -or $BlockKey -eq "CloudContent") { return Get-String "DetailRestartExplorer" }
+    if ($BlockKey -eq "EdgeQuietMode" -or $BlockKey -match "^Remove") { return Get-String "DetailRestartApp" }
+    return Get-String "DetailRestartNone"
+}
+
+function Get-RollbackDetailText {
+    param([string]$BlockKey)
+    if ($BlockKey -match "^Remove") { return Get-String "DetailRollbackAppx" }
+    return Get-String "DetailRollbackRegistry"
+}
+
+function Update-DescriptionFromTag {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param($Tag)
+
+    if ($null -eq $desc) { return }
+    if ($null -eq $Tag) { $desc.Text = ""; return }
+    if ($Tag.Kind -eq "tweak") {
+        $d = $Tag.Detail
+        $blockKey = [string]$d.BlockKey
+        $ed = if ($d.Editions -and $d.Editions.Count -gt 0) { ($d.Editions -join ", ") } else { (Get-String "EditionsAll") }
+        $base = Get-String "NodeTweakDesc" @(
+            (Get-LocalizedTweakDescription -Detail $d),
+            $d.Path,
+            $d.Name,
+            $d.Value,
+            $d.Type,
+            (Get-LocalizedConfidence $d.Confidence),
+            "$($d.MinBuild)$(if ($d.MinUBR -gt 0) { ".$($d.MinUBR)" })",
+            $ed
+        )
+        $extra = @(
+            (Get-String "DetailSupport" @((Get-SupportSummary -Detail $d))),
+            (Get-String "DetailRisk" @((Get-RiskText -Detail $d -BlockKey $blockKey))),
+            (Get-AdminDetailText -Detail $d -BlockKey $blockKey),
+            (Get-RestartDetailText -Detail $d -BlockKey $blockKey),
+            (Get-RollbackDetailText -BlockKey $blockKey)
+        )
+        $desc.Text = $base + "`r`n" + ($extra -join "`r`n")
+    } elseif ($Tag.Kind -eq "block") {
+        $entry = $script:BlockEntries | Where-Object { $_.Node.Tag.Key -eq $Tag.Key } | Select-Object -First 1
+        if ($entry) {
+            $blockText = Get-String "BlockDetailDesc" @(
+                (Get-LocalizedBlockTitle -Key $Tag.Key -FallbackTitle $Tag.TitleEN),
+                (Get-SelectedTweakCount -Entry $entry),
+                $entry.Children.Count,
+                (Get-BlockRiskText -Entry $entry)
+            )
+            if ($Tag.Key -match "^Remove") {
+                $blockText += "`r`n" + (Get-String "DetailAdminRequired")
+                $blockText += "`r`n" + (Get-String "DetailRollbackAppx")
+            }
+            $desc.Text = $blockText
+        } else {
+            $desc.Text = (Get-String "NodeBlockDesc" @($Tag.Key))
+        }
+    }
+}
+
 function Get-LocalizedResultItem {
     param([object]$Row)
 
@@ -590,46 +846,107 @@ function ConvertTo-DisplayResult {
 # ------------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = (Get-String "FormTitle" @($catalog.ScriptVersion))
-$form.Size = New-Object System.Drawing.Size(940, 680)
+$form.Size = New-Object System.Drawing.Size(1220, 840)
 $form.StartPosition = "CenterScreen"
-$form.MinimumSize = New-Object System.Drawing.Size(720, 480)
+$form.MinimumSize = New-Object System.Drawing.Size(1040, 640)
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
+$form.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+$uiFont = New-Object System.Drawing.Font("Segoe UI", 9)
+$uiFontBold = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$form.Font = $uiFont
 
-# Top bar: environment header + a live filter box (D1). Both live in one Top-docked panel so
-# the docking order stays simple and the tree fills the rest of the form.
+function New-BadgeLabel {
+    param(
+        [string]$Text,
+        [int]$X,
+        [int]$Y,
+        [int]$Width,
+        [System.Drawing.Color]$BackColor,
+        [System.Drawing.Color]$ForeColor
+    )
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = $Text
+    $l.Location = New-Object System.Drawing.Point($X, $Y)
+    $l.Size = New-Object System.Drawing.Size($Width, 22)
+    $l.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $l.BackColor = $BackColor
+    $l.ForeColor = $ForeColor
+    $l.Font = $uiFont
+    return $l
+}
+
+# Top bar: compact environment/status panel plus filter.
 $topBar = New-Object System.Windows.Forms.Panel
 $topBar.Dock = "Top"
-$topBar.Height = 84
+$topBar.Height = 118
+$topBar.BackColor = [System.Drawing.Color]::White
 
 $header = New-Object System.Windows.Forms.Label
-$header.Location = New-Object System.Drawing.Point(10, 6)
-$header.Size = New-Object System.Drawing.Size(900, 40)
+$header.Location = New-Object System.Drawing.Point(12, 10)
+$header.Size = New-Object System.Drawing.Size(1038, 18)
 $header.Anchor = "Top, Left, Right"
 $header.Text = (Get-String "Header" @($catalog.Build, $catalog.UBR, $catalog.EditionGroup))
+$header.ForeColor = [System.Drawing.Color]::FromArgb(73, 80, 87)
+
+$lblProduct = New-Object System.Windows.Forms.Label
+$lblProduct.Text = (Get-String "HeaderProduct")
+$lblProduct.Location = New-Object System.Drawing.Point(12, 34)
+$lblProduct.Size = New-Object System.Drawing.Size(170, 24)
+$lblProduct.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+$lblProduct.ForeColor = [System.Drawing.Color]::FromArgb(33, 37, 41)
+
+$lblBuild = New-Object System.Windows.Forms.Label
+$lblBuild.Text = (Get-String "HeaderBuild" @($catalog.Build, $catalog.UBR))
+$lblBuild.Location = New-Object System.Drawing.Point(196, 37)
+$lblBuild.Size = New-Object System.Drawing.Size(135, 21)
+$lblBuild.ForeColor = [System.Drawing.Color]::FromArgb(33, 37, 41)
+
+$lblEdition = New-Object System.Windows.Forms.Label
+$lblEdition.Text = (Get-String "HeaderEdition" @($catalog.EditionGroup))
+$lblEdition.Location = New-Object System.Drawing.Point(342, 37)
+$lblEdition.Size = New-Object System.Drawing.Size(135, 21)
+$lblEdition.ForeColor = [System.Drawing.Color]::FromArgb(33, 37, 41)
+
+$lblMode = New-Object System.Windows.Forms.Label
+$lblMode.Text = (Get-String "HeaderMode")
+$lblMode.Location = New-Object System.Drawing.Point(488, 37)
+$lblMode.Size = New-Object System.Drawing.Size(160, 21)
+$lblMode.ForeColor = [System.Drawing.Color]::FromArgb(33, 37, 41)
+
+$badgeSafe = New-BadgeLabel -Text (Get-String "BadgeSafeDefault") -X 12 -Y 66 -Width 145 `
+    -BackColor ([System.Drawing.Color]::FromArgb(232, 246, 239)) -ForeColor ([System.Drawing.Color]::FromArgb(25, 135, 84))
+$badgeAudit = New-BadgeLabel -Text (Get-String "BadgeAuditFirst") -X 165 -Y 66 -Width 96 `
+    -BackColor ([System.Drawing.Color]::FromArgb(232, 240, 254)) -ForeColor ([System.Drawing.Color]::FromArgb(13, 110, 253))
+$badgeNoChanges = New-BadgeLabel -Text (Get-String "BadgeNoChanges") -X 269 -Y 66 -Width 145 `
+    -BackColor ([System.Drawing.Color]::FromArgb(241, 243, 245)) -ForeColor ([System.Drawing.Color]::FromArgb(73, 80, 87))
 
 $lblFilter = New-Object System.Windows.Forms.Label
 $lblFilter.Text = (Get-String "FilterLabel")
-$lblFilter.Location = New-Object System.Drawing.Point(10, 53)
+$lblFilter.Location = New-Object System.Drawing.Point(432, 69)
 $lblFilter.AutoSize = $true
 
 $txtFilter = New-Object System.Windows.Forms.TextBox
-$txtFilter.Location = New-Object System.Drawing.Point(60, 50)
-$txtFilter.Size = New-Object System.Drawing.Size(360, 24)
-$txtFilter.Anchor = "Top, Left"
+$txtFilter.Location = New-Object System.Drawing.Point(482, 66)
+$txtFilter.Size = New-Object System.Drawing.Size(320, 24)
+$txtFilter.Anchor = "Top, Left, Right"
 
 $btnFilterClear = New-Object System.Windows.Forms.Button
 $btnFilterClear.Text = (Get-String "FilterClear")
-$btnFilterClear.Size = New-Object System.Drawing.Size(60, 24)
-$btnFilterClear.Location = New-Object System.Drawing.Point(428, 49)
+$btnFilterClear.Size = New-Object System.Drawing.Size(70, 26)
+$btnFilterClear.Location = New-Object System.Drawing.Point(810, 65)
 $btnFilterClear.Anchor = "Top, Left"
 
-$topBar.Controls.AddRange(@($header, $lblFilter, $txtFilter, $btnFilterClear))
+$topBar.Controls.AddRange(@(
+    $header, $lblProduct, $lblBuild, $lblEdition, $lblMode,
+    $badgeSafe, $badgeAudit, $badgeNoChanges,
+    $lblFilter, $txtFilter, $btnFilterClear
+))
 
 $btnLanguage = New-Object System.Windows.Forms.Button
 $btnLanguage.Text = Get-String "LangToggle"
-$btnLanguage.Size = New-Object System.Drawing.Size(65, 24)
-$btnLanguage.Location = New-Object System.Drawing.Point(500, 49)
+$btnLanguage.Size = New-Object System.Drawing.Size(76, 26)
+$btnLanguage.Location = New-Object System.Drawing.Point(890, 65)
 $btnLanguage.Anchor = "Top, Left"
 $btnLanguage.Add_Click({
     $script:Lang = if ($script:Lang -eq "EN") { "UA" } else { "EN" }
@@ -637,19 +954,143 @@ $btnLanguage.Add_Click({
 })
 $topBar.Controls.Add($btnLanguage)
 
+function Update-TopBarLayout {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param()
+    if (-not $topBar -or -not $txtFilter -or -not $btnFilterClear -or -not $btnLanguage) { return }
+    $w = $topBar.ClientSize.Width
+    if ($w -le 0 -and $form) { $w = $form.ClientSize.Width }
+    if ($w -le 0) { return }
+
+    $rightMargin = 12
+    $gap = 8
+    $languageX = [Math]::Max(650, $w - $rightMargin - $btnLanguage.Width)
+    $clearX = [Math]::Max(570, $languageX - $gap - $btnFilterClear.Width)
+    $filterWidth = [Math]::Max(140, $clearX - $gap - $txtFilter.Left)
+
+    $btnLanguage.Location = New-Object System.Drawing.Point($languageX, 65)
+    $btnFilterClear.Location = New-Object System.Drawing.Point($clearX, 65)
+    $txtFilter.Size = New-Object System.Drawing.Size($filterWidth, 24)
+}
+
+$topBar.Add_Resize({ Update-TopBarLayout })
+$form.Add_Shown({ Update-TopBarLayout })
+
 $form.Controls.Add($topBar)
 
-# TreeView with checkboxes: blocks at top level, tweaks as children.
+# Hidden TreeView remains the canonical selection model. The visible UI below is a
+# friendlier two-pane view over these same TreeNode objects.
 $tree = New-Object System.Windows.Forms.TreeView
-$tree.Dock = "Fill"
 $tree.CheckBoxes = $true
 $tree.HideSelection = $false
-$form.Controls.Add($tree)
+
+$mainSplit = New-Object System.Windows.Forms.SplitContainer
+$mainSplit.Dock = "Fill"
+$mainSplit.Orientation = [System.Windows.Forms.Orientation]::Vertical
+$mainSplit.SplitterDistance = 555
+$mainSplit.BackColor = [System.Drawing.Color]::FromArgb(222, 226, 230)
+$script:SplitterMovedByUser = $false
+
+$leftPanel = New-Object System.Windows.Forms.Panel
+$leftPanel.Dock = "Fill"
+$leftPanel.BackColor = [System.Drawing.Color]::White
+$lblCategories = New-Object System.Windows.Forms.Label
+$lblCategories.Text = Get-String "CategoryHeader"
+$lblCategories.Dock = "Top"
+$lblCategories.Height = 30
+$lblCategories.Padding = New-Object System.Windows.Forms.Padding -ArgumentList 10, 7, 0, 0
+$lblCategories.Font = $uiFontBold
+
+$categoryList = New-Object System.Windows.Forms.ListView
+$categoryList.Dock = "Fill"
+$categoryList.View = [System.Windows.Forms.View]::Details
+$categoryList.CheckBoxes = $true
+$categoryList.FullRowSelect = $true
+$categoryList.HideSelection = $false
+$categoryList.MultiSelect = $false
+$categoryList.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+$categoryList.ShowItemToolTips = $true
+[void]$categoryList.Columns.Add((Get-String "CategoryHeader"), 260)
+[void]$categoryList.Columns.Add((Get-String "ColRisk"), 90)
+
+$leftPanel.Controls.Add($categoryList)
+$leftPanel.Controls.Add($lblCategories)
+
+$rightPanel = New-Object System.Windows.Forms.Panel
+$rightPanel.Dock = "Fill"
+$rightPanel.BackColor = [System.Drawing.Color]::White
+$lblTweaks = New-Object System.Windows.Forms.Label
+$lblTweaks.Text = Get-String "TweaksHeader"
+$lblTweaks.Dock = "Top"
+$lblTweaks.Height = 30
+$lblTweaks.Padding = New-Object System.Windows.Forms.Padding -ArgumentList 10, 7, 0, 0
+$lblTweaks.Font = $uiFontBold
+
+$tweakList = New-Object System.Windows.Forms.ListView
+$tweakList.Dock = "Fill"
+$tweakList.View = [System.Windows.Forms.View]::Details
+$tweakList.CheckBoxes = $true
+$tweakList.FullRowSelect = $true
+$tweakList.HideSelection = $false
+$tweakList.MultiSelect = $false
+$tweakList.BorderStyle = [System.Windows.Forms.BorderStyle]::None
+$tweakList.ShowItemToolTips = $true
+[void]$tweakList.Columns.Add((Get-String "ColTweak"), 430)
+[void]$tweakList.Columns.Add((Get-String "ColConfidence"), 132)
+[void]$tweakList.Columns.Add((Get-String "ColRisk"), 112)
+[void]$tweakList.Columns.Add((Get-String "ColRegistry"), 360)
+
+$rightPanel.Controls.Add($tweakList)
+$rightPanel.Controls.Add($lblTweaks)
+
+$mainSplit.Panel1.Controls.Add($leftPanel)
+$mainSplit.Panel2.Controls.Add($rightPanel)
+$form.Controls.Add($mainSplit)
+
+function Update-ListColumnLayout {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param()
+
+    if ($categoryList -and $categoryList.Columns.Count -ge 2) {
+        $w = [Math]::Max(260, $categoryList.ClientSize.Width - 22)
+        $risk = 90
+        $categoryList.Columns[1].Width = $risk
+        $categoryList.Columns[0].Width = [Math]::Max(150, $w - $risk)
+    }
+
+    if ($tweakList -and $tweakList.Columns.Count -ge 4) {
+        $w = [Math]::Max(520, $tweakList.ClientSize.Width - 22)
+        $confidence = 132
+        $risk = 112
+        $registry = [Math]::Max(210, [int]($w * 0.34))
+        $name = [Math]::Max(260, $w - $confidence - $risk - $registry)
+        $tweakList.Columns[0].Width = $name
+        $tweakList.Columns[1].Width = $confidence
+        $tweakList.Columns[2].Width = $risk
+        $tweakList.Columns[3].Width = $registry
+    }
+}
+
+$updateListColumnLayout = { Update-ListColumnLayout }
+$leftPanel.Add_Resize({ Update-ListColumnLayout })
+$rightPanel.Add_Resize({ Update-ListColumnLayout })
+$mainSplit.Add_SplitterMoved({
+    $script:SplitterMovedByUser = $true
+    Update-ListColumnLayout
+})
+$form.Add_Shown({
+    if (-not $script:SplitterMovedByUser -and $mainSplit.ClientSize.Width -gt 0) {
+        $target = [int]($mainSplit.ClientSize.Width * 0.46)
+        $mainSplit.SplitterDistance = [Math]::Max(420, [Math]::Min($target, $mainSplit.ClientSize.Width - 520))
+    }
+    Update-ListColumnLayout
+})
 
 # Bottom panel with action buttons.
 $panel = New-Object System.Windows.Forms.Panel
 $panel.Dock = "Bottom"
-$panel.Height = 96
+$panel.Height = 104
+$panel.BackColor = [System.Drawing.Color]::White
 $form.Controls.Add($panel)
 
 # Description box shows the selected node's details.
@@ -657,12 +1098,13 @@ $desc = New-Object System.Windows.Forms.TextBox
 $desc.Dock = "Bottom"
 $desc.Multiline = $true
 $desc.ReadOnly = $true
-$desc.Height = 60
+$desc.Height = 78
 $desc.ScrollBars = "Vertical"
+$desc.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$desc.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
 $form.Controls.Add($desc)
 
-# Tree must be added last visually so Fill works under the docked panels.
-$tree.BringToFront()
+$mainSplit.BringToFront()
 
 # Group tweaks by block.
 $tweaksByBlock = @{}
@@ -713,76 +1155,184 @@ foreach ($block in $catalog.Blocks) {
 }
 
 # Checking/unchecking a block toggles all its child tweaks. Guard against recursion.
-# Cascade over the canonical children (not $e.Node.Nodes) so a block toggle affects every
-# tweak even when the filter is currently hiding some of them.
+# Cascade over the canonical children so a block toggle affects every tweak even when
+# the filter is currently hiding some of them.
 $script:Suppress = $false
-$tree.Add_AfterCheck({
-    param($src, $e)
-    if ($script:Suppress) { return }
-    if ($null -ne $e.Node.Tag -and $e.Node.Tag.Kind -eq "block") {
-        $script:Suppress = $true
-        $entry = $script:BlockEntries | Where-Object { $_.Node -eq $e.Node } | Select-Object -First 1
-        $kids = if ($entry) { $entry.Children } else { $e.Node.Nodes }
-        foreach ($child in $kids) { $child.Checked = $e.Node.Checked }
-        $script:Suppress = $false
-    }
-})
+$script:AuditGatePassed = $false
 
-# Live filter (D1): narrow the visible tree by substring match on block title or tweak label.
-# Rebuilds $tree.Nodes from the canonical $script:BlockEntries each keystroke; node objects
-# (and their Checked state) are reused, so filtering never loses the selection.
-$applyFilter = {
-    $f = $txtFilter.Text.Trim()
-    $tree.BeginUpdate()
+function Set-ApplyGate {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param([bool]$Enabled, [string]$StatusText = $null)
+    $script:AuditGatePassed = [bool]$Enabled
+    if ($btnApply) { $btnApply.Enabled = [bool]$Enabled }
+    if ($status -and -not [string]::IsNullOrWhiteSpace($StatusText)) { $status.Text = $StatusText }
+}
+
+function Reset-ApplyGateForSelectionChange {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param()
+    Set-ApplyGate -Enabled $false -StatusText (Get-String "StatusAuditRequired")
+}
+
+function Get-SelectedBlockEntry {
+    if ($categoryList.SelectedItems.Count -gt 0) { return $categoryList.SelectedItems[0].Tag }
+    if ($categoryList.Items.Count -gt 0) { return $categoryList.Items[0].Tag }
+    return $null
+}
+
+function Test-EntryMatchesFilter {
+    param($Entry, [string]$Filter)
+    if ([string]::IsNullOrWhiteSpace($Filter)) { return $true }
+    $needle = [regex]::Escape($Filter)
+    if ($Entry.Node.Text -match $needle) { return $true }
+    foreach ($c in $Entry.Children) {
+        if ($c.Text -match $needle) { return $true }
+        if ($c.Tag -and $c.Tag.Kind -eq "tweak" -and (Get-RegistryPreview -Detail $c.Tag.Detail) -match $needle) { return $true }
+    }
+    return $false
+}
+
+function Test-TweakMatchesFilter {
+    param($Node, [string]$Filter, [bool]$BlockMatched)
+    if ([string]::IsNullOrWhiteSpace($Filter) -or $BlockMatched) { return $true }
+    $needle = [regex]::Escape($Filter)
+    if ($Node.Text -match $needle) { return $true }
+    if ($Node.Tag -and $Node.Tag.Kind -eq "tweak" -and (Get-RegistryPreview -Detail $Node.Tag.Detail) -match $needle) { return $true }
+    return $false
+}
+
+function Refresh-TweakList {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param($Entry)
+
+    $script:Suppress = $true
+    $tweakList.BeginUpdate()
     try {
-        $tree.Nodes.Clear()
-        foreach ($entry in $script:BlockEntries) {
-            $bn = $entry.Node
-            $bn.Nodes.Clear()
-            $blockMatch = ($f -eq "") -or ($bn.Text -match [regex]::Escape($f))
-            $kids = New-Object System.Collections.ArrayList
-            if ($blockMatch) {
-                foreach ($c in $entry.Children) { [void]$kids.Add($c) }
-            } else {
-                foreach ($c in $entry.Children) {
-                    if ($c.Text -match [regex]::Escape($f)) { [void]$kids.Add($c) }
-                }
-            }
-            if ($blockMatch -or $kids.Count -gt 0) {
-                foreach ($c in $kids) { [void]$bn.Nodes.Add($c) }
-                [void]$tree.Nodes.Add($bn)
-                if ($f -ne "") { $bn.Expand() }
-            }
+        $tweakList.Items.Clear()
+        if ($null -eq $Entry) { return }
+        $filter = $txtFilter.Text.Trim()
+        $blockMatched = ([string]::IsNullOrWhiteSpace($filter) -or $Entry.Node.Text -match [regex]::Escape($filter))
+        foreach ($child in $Entry.Children) {
+            if (-not (Test-TweakMatchesFilter -Node $child -Filter $filter -BlockMatched $blockMatched)) { continue }
+            $detail = $child.Tag.Detail
+            $item = New-Object System.Windows.Forms.ListViewItem((Get-LocalizedTweakDescription -Detail $detail))
+            $item.Checked = [bool]$child.Checked
+            $item.Tag = $child.Tag
+            $item.ToolTipText = "{0}`r`n{1}: {2}`r`n{3}: {4}`r`n{5}" -f `
+                (Get-LocalizedTweakDescription -Detail $detail),
+                (Get-String "ColConfidence"), (Get-LocalizedConfidence ([string]$detail.Confidence)),
+                (Get-String "ColRisk"), (Get-RiskText -Detail $detail -BlockKey $Entry.Node.Tag.Key),
+                (Get-RegistryPreview -Detail $detail)
+            $item.BackColor = Get-ConfidenceBackColor ([string]$detail.Confidence)
+            [void]$item.SubItems.Add((Get-LocalizedConfidence ([string]$detail.Confidence)))
+            [void]$item.SubItems.Add((Get-RiskText -Detail $detail -BlockKey $Entry.Node.Tag.Key))
+            [void]$item.SubItems.Add((Get-RegistryPreview -Detail $detail))
+            [void]$tweakList.Items.Add($item)
         }
     } finally {
-        $tree.EndUpdate()
+        $tweakList.EndUpdate()
+        $script:Suppress = $false
     }
+}
+
+function Refresh-CategoryList {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param([string]$PreferredKey = $null)
+
+    $currentKey = $PreferredKey
+    if ([string]::IsNullOrWhiteSpace($currentKey) -and $categoryList.SelectedItems.Count -gt 0) {
+        $currentKey = $categoryList.SelectedItems[0].Tag.Node.Tag.Key
+    }
+
+    $script:Suppress = $true
+    $categoryList.BeginUpdate()
+    try {
+        $categoryList.Items.Clear()
+        $filter = $txtFilter.Text.Trim()
+        foreach ($entry in $script:BlockEntries) {
+            if (-not (Test-EntryMatchesFilter -Entry $entry -Filter $filter)) { continue }
+            $bk = $entry.Node.Tag.Key
+            $n = if ($script:PerBlockCounts -and $script:PerBlockCounts[$bk]) { [int]$script:PerBlockCounts[$bk] } else { 0 }
+            $title = if ($n -gt 0) { $entry.BaseTitle + (Get-String "WouldChangeText" @($n)) } else { $entry.BaseTitle }
+            $item = New-Object System.Windows.Forms.ListViewItem($title)
+            $item.Checked = [bool]$entry.Node.Checked
+            $item.Tag = $entry
+            $riskText = Get-BlockRiskText -Entry $entry
+            $item.ToolTipText = "{0}`r`n{1}: {2}`r`n{3}: {4}/{5}" -f `
+                $title,
+                (Get-String "ColRisk"), $riskText,
+                (Get-String "TweaksHeader"), (Get-SelectedTweakCount -Entry $entry), $entry.Children.Count
+            [void]$item.SubItems.Add($riskText)
+            if ($entry.Node.Tag.Key -match "^Remove") {
+                $item.BackColor = [System.Drawing.Color]::FromArgb(255, 248, 219)
+            }
+            [void]$categoryList.Items.Add($item)
+            if ($currentKey -eq $bk) { $item.Selected = $true }
+        }
+        if ($categoryList.SelectedItems.Count -eq 0 -and $categoryList.Items.Count -gt 0) {
+            $categoryList.Items[0].Selected = $true
+        }
+    } finally {
+        $categoryList.EndUpdate()
+        $script:Suppress = $false
+    }
+
+    Refresh-TweakList -Entry (Get-SelectedBlockEntry)
+}
+
+# Live filter: narrow category/tweak lists by substring match on block title, tweak label,
+# or registry preview. Canonical TreeNode state is reused, so filtering never loses selection.
+$applyFilter = {
+    Refresh-CategoryList
 }
 $txtFilter.Add_TextChanged($applyFilter)
 $btnFilterClear.Add_Click({ $txtFilter.Text = "" })
 
-# Show details for the selected node.
-$tree.Add_AfterSelect({
+$categoryList.Add_ItemChecked({
     param($src, $e)
-    $tag = $e.Node.Tag
-    if ($null -eq $tag) { $desc.Text = ""; return }
-    if ($tag.Kind -eq "tweak") {
-        $d = $tag.Detail
-        $ed = if ($d.Editions -and $d.Editions.Count -gt 0) { ($d.Editions -join ", ") } else { (Get-String "EditionsAll") }
-        $desc.Text = (Get-String "NodeTweakDesc" @(
-            (Get-LocalizedTweakDescription -Detail $d),
-            $d.Path,
-            $d.Name,
-            $d.Value,
-            $d.Type,
-            (Get-LocalizedConfidence $d.Confidence),
-            "$($d.MinBuild)$(if ($d.MinUBR -gt 0) { ".$($d.MinUBR)" })",
-            $ed
-        ))
-    } else {
-        $desc.Text = (Get-String "NodeBlockDesc" @($tag.Key))
+    if ($script:Suppress) { return }
+    $entry = $e.Item.Tag
+    if ($null -eq $entry) { return }
+    $script:Suppress = $true
+    try {
+        $entry.Node.Checked = [bool]$e.Item.Checked
+        foreach ($child in $entry.Children) { $child.Checked = [bool]$e.Item.Checked }
+    } finally {
+        $script:Suppress = $false
+    }
+    Refresh-TweakList -Entry $entry
+    Reset-ApplyGateForSelectionChange
+})
+
+$categoryList.Add_SelectedIndexChanged({
+    $entry = Get-SelectedBlockEntry
+    Refresh-TweakList -Entry $entry
+    if ($entry) { Update-DescriptionFromTag -Tag $entry.Node.Tag }
+})
+
+$tweakList.Add_ItemChecked({
+    param($src, $e)
+    if ($script:Suppress) { return }
+    if ($null -eq $e.Item.Tag -or $e.Item.Tag.Kind -ne "tweak") { return }
+    $e.Item.Tag.Detail | Out-Null
+    $node = $null
+    foreach ($entry in $script:BlockEntries) {
+        foreach ($child in $entry.Children) {
+            if ($child.Tag.Key -eq $e.Item.Tag.Key) { $node = $child; break }
+        }
+        if ($node) { break }
+    }
+    if ($node) { $node.Checked = [bool]$e.Item.Checked }
+    Reset-ApplyGateForSelectionChange
+})
+
+$tweakList.Add_SelectedIndexChanged({
+    if ($tweakList.SelectedItems.Count -gt 0) {
+        Update-DescriptionFromTag -Tag $tweakList.SelectedItems[0].Tag
     }
 })
+
+Refresh-CategoryList
 
 # ------------------------------------------------------------
 # Buttons
@@ -793,6 +1343,7 @@ function Get-ActionButton {
     $b.Text = $Text
     $b.Location = New-Object System.Drawing.Point($X, 12)
     $b.Size = New-Object System.Drawing.Size($Width, 32)
+    $b.FlatStyle = [System.Windows.Forms.FlatStyle]::System
     return $b
 }
 
@@ -806,6 +1357,9 @@ $btnUndo = Get-ActionButton -Text (Get-String "BtnUndo") -X 634 -Width 100
 $btnClose = Get-ActionButton -Text (Get-String "BtnClose") -X 738 -Width 80
 
 $panel.Controls.AddRange(@($btnSelectAll, $btnSelectNone, $btnSave, $btnLoad, $btnAudit, $btnApply, $btnUndo, $btnClose))
+
+$btnAudit.Font = $uiFontBold
+$btnApply.Enabled = $false
 
 # Status line.
 $status = New-Object System.Windows.Forms.Label
@@ -823,6 +1377,8 @@ $btnSelectAll.Add_Click({
         foreach ($c in $entry.Children) { $c.Checked = $true }
     }
     $script:Suppress = $false
+    Refresh-CategoryList
+    Reset-ApplyGateForSelectionChange
 })
 $btnSelectNone.Add_Click({
     $script:Suppress = $true
@@ -831,6 +1387,8 @@ $btnSelectNone.Add_Click({
         foreach ($c in $entry.Children) { $c.Checked = $false }
     }
     $script:Suppress = $false
+    Refresh-CategoryList
+    Reset-ApplyGateForSelectionChange
 })
 
 $btnSave.Add_Click({
@@ -858,6 +1416,8 @@ $btnLoad.Add_Click({
         try {
             $cfg = Get-Content -LiteralPath $dlg.FileName -Raw -ErrorAction Stop | ConvertFrom-Json
             Set-TreeFromConfig -Config $cfg
+            Refresh-CategoryList
+            Reset-ApplyGateForSelectionChange
             $status.Text = (Get-String "StatusLoaded" @($dlg.FileName))
         } catch {
             [System.Windows.Forms.MessageBox]::Show(
@@ -947,9 +1507,50 @@ function Find-LatestResultsJson {
     return $null
 }
 
-# Show the engine's results in a grid. Defaults to a "Needs attention" view.
+function Get-NormalizedResultRows {
+    param([object]$Rows)
+
+    if ($null -eq $Rows) { return @() }
+    $arr = @($Rows)
+    while ($arr.Count -eq 1 -and $arr[0] -is [System.Array]) {
+        $arr = @($arr[0])
+    }
+    return $arr
+}
+
+# Summary counters for the results tabs. These are UI groupings; the full fidelity
+# results stay in Details and Raw.
+function Get-ResultSummaryCounts {
+    param([object]$Results)
+    $rows = @(Get-NormalizedResultRows -Rows $Results)
+    $would = @($rows | Where-Object { $_.Status -eq "WouldChange" -or $_.Status -eq "WouldRemove" }).Count
+    $ok = @($rows | Where-Object { $_.Status -eq "Compliant" -or $_.Status -eq "AlreadyConfigured" -or $_.Status -eq "VerifyOK" }).Count
+    $changed = @($rows | Where-Object { $_.Status -eq "Changed" }).Count
+    $needs = @($rows | Where-Object {
+            $_.Status -eq "RequiresVerification" -or $_.Support -eq "RequiresVerification" -or
+            $_.Support -eq "MaybeIgnoredOnEdition" -or $_.Confidence -eq "RequiresVerification"
+        }).Count
+    $unsupported = @($rows | Where-Object {
+            ([string]$_.Status).StartsWith("Unsupported") -or ([string]$_.Support).StartsWith("Unsupported")
+        }).Count
+    $errors = @($rows | Where-Object { $_.Status -eq "Error" -or $_.Status -eq "VerifyFail" }).Count
+    return [pscustomobject]@{
+        Total = $rows.Count
+        WouldChange = $would
+        AlreadyOk = $ok
+        Changed = $changed
+        NeedsVerification = $needs
+        Unsupported = $unsupported
+        Errors = $errors
+    }
+}
+
+# Show the engine's results in Summary / Details / Raw tabs. Details defaults to a
+# "Needs attention" view.
 function Show-ResultsDialog {
-    param([object[]]$Results, [string]$Mode)
+    param([object]$Results, [string]$Mode, [string]$RawText = "")
+
+    $Results = @(Get-NormalizedResultRows -Rows $Results)
 
     # Use the engine's attention-status list (from the catalog) so highlighting never drifts
     # from the HTML report. Falls back to a literal list only if the script-scope copy is unset.
@@ -966,9 +1567,45 @@ function Show-ResultsDialog {
 
     $rf = New-Object System.Windows.Forms.Form
     $rf.Text = (Get-String "GridTitle" @($Mode))
-    $rf.Size = New-Object System.Drawing.Size(900, 560)
+    $rf.Size = New-Object System.Drawing.Size(960, 620)
     $rf.StartPosition = "CenterParent"
     $rf.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+    $rf.Font = $uiFont
+
+    $tabs = New-Object System.Windows.Forms.TabControl
+    $tabs.Dock = "Fill"
+
+    $tabSummary = New-Object System.Windows.Forms.TabPage
+    $tabSummary.Text = Get-String "TabSummary"
+    $tabDetails = New-Object System.Windows.Forms.TabPage
+    $tabDetails.Text = Get-String "TabDetails"
+    $tabRaw = New-Object System.Windows.Forms.TabPage
+    $tabRaw.Text = Get-String "TabRaw"
+
+    $summaryList = New-Object System.Windows.Forms.ListView
+    $summaryList.Dock = "Fill"
+    $summaryList.View = [System.Windows.Forms.View]::Details
+    $summaryList.FullRowSelect = $true
+    $summaryList.HeaderStyle = [System.Windows.Forms.ColumnHeaderStyle]::None
+    [void]$summaryList.Columns.Add("Metric", 260)
+    [void]$summaryList.Columns.Add("Value", 120)
+    $summaryCounts = Get-ResultSummaryCounts -Results $Results
+    $metrics = @(
+        @{ Label = Get-String "SummaryTotal"; Value = $summaryCounts.Total; Color = [System.Drawing.Color]::White },
+        @{ Label = Get-String "SummaryWouldChange"; Value = $summaryCounts.WouldChange; Color = [System.Drawing.Color]::FromArgb(255, 248, 219) },
+        @{ Label = Get-String "SummaryAlreadyOk"; Value = $summaryCounts.AlreadyOk; Color = [System.Drawing.Color]::FromArgb(232, 246, 239) },
+        @{ Label = Get-String "SummaryChanged"; Value = $summaryCounts.Changed; Color = [System.Drawing.Color]::FromArgb(232, 246, 239) },
+        @{ Label = Get-String "SummaryNeedsVerification"; Value = $summaryCounts.NeedsVerification; Color = [System.Drawing.Color]::FromArgb(255, 248, 219) },
+        @{ Label = Get-String "SummaryUnsupported"; Value = $summaryCounts.Unsupported; Color = [System.Drawing.Color]::FromArgb(255, 236, 224) },
+        @{ Label = Get-String "SummaryErrors"; Value = $summaryCounts.Errors; Color = [System.Drawing.Color]::FromArgb(248, 215, 218) }
+    )
+    foreach ($m in $metrics) {
+        $item = New-Object System.Windows.Forms.ListViewItem([string]$m.Label)
+        [void]$item.SubItems.Add([string]$m.Value)
+        $item.BackColor = $m.Color
+        [void]$summaryList.Items.Add($item)
+    }
+    $tabSummary.Controls.Add($summaryList)
 
     $grid = New-Object System.Windows.Forms.DataGridView
     $grid.Dock = "Fill"
@@ -1056,9 +1693,30 @@ function Show-ResultsDialog {
     $chkAll.Add_CheckedChanged($populate)
     & $populate
 
-    $rf.Controls.Add($grid)
-    $rf.Controls.Add($top)
+    $detailsPanel = New-Object System.Windows.Forms.Panel
+    $detailsPanel.Dock = "Fill"
+    $detailsPanel.Controls.Add($grid)
+    $detailsPanel.Controls.Add($top)
     $grid.BringToFront()
+    $tabDetails.Controls.Add($detailsPanel)
+
+    $rawBox = New-Object System.Windows.Forms.TextBox
+    $rawBox.Dock = "Fill"
+    $rawBox.Multiline = $true
+    $rawBox.ReadOnly = $true
+    $rawBox.ScrollBars = "Both"
+    $rawBox.WordWrap = $false
+    $rawBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+    if ([string]::IsNullOrWhiteSpace($RawText)) {
+        try { $RawText = ($Results | ConvertTo-Json -Depth 8) } catch { $RawText = "" }
+    }
+    $rawBox.Text = $RawText
+    $tabRaw.Controls.Add($rawBox)
+
+    [void]$tabs.TabPages.Add($tabSummary)
+    [void]$tabs.TabPages.Add($tabDetails)
+    [void]$tabs.TabPages.Add($tabRaw)
+    $rf.Controls.Add($tabs)
     [void]$rf.ShowDialog()
     $rf.Dispose()
 }
@@ -1088,6 +1746,7 @@ function Update-BlockCounts {
         $n = [int]$perBlock[$bk]
         $script:PerBlockCounts = $perBlock; $entry.Node.Text = if ($n -gt 0) { $entry.BaseTitle + (Get-String "WouldChangeText" @($n)) } else { $entry.BaseTitle }
     }
+    Refresh-CategoryList
 }
 
 # Run the engine in a given mode with the current selection, then show the results
@@ -1130,17 +1789,28 @@ function Invoke-Engine {
 
         $jsonPath = Find-LatestResultsJson -Base $reportBase -Mode $Mode
         if ($jsonPath) {
-            $results = @(Get-Content -LiteralPath $jsonPath -Raw -ErrorAction Stop | ConvertFrom-Json)
+            $rawText = Get-Content -LiteralPath $jsonPath -Raw -ErrorAction Stop
+            $results = @(Get-NormalizedResultRows -Rows ($rawText | ConvertFrom-Json))
             $status.Text = (Get-String "StatusComplete" @($Mode, $results.Count, $proc.ExitCode))
-            if ($Mode -eq "Audit") { Update-BlockCounts -Results $results }
-            Show-ResultsDialog -Results $results -Mode $Mode
+            if ($Mode -eq "Audit") {
+                Update-BlockCounts -Results $results
+                $summaryCounts = Get-ResultSummaryCounts -Results $results
+                if ($proc.ExitCode -eq 0 -and $summaryCounts.Errors -eq 0) {
+                    Set-ApplyGate -Enabled $true -StatusText (Get-String "StatusAuditPassedApplyEnabled")
+                } else {
+                    Set-ApplyGate -Enabled $false -StatusText (Get-String "StatusAuditErrorsApplyDisabled")
+                }
+            }
+            Show-ResultsDialog -Results $results -Mode $Mode -RawText $rawText
         } else {
+            if ($Mode -eq "Audit") { Set-ApplyGate -Enabled $false }
             $status.Text = (Get-String "StatusNoResults" @($Mode, $proc.ExitCode))
         }
     } catch {
         [System.Windows.Forms.MessageBox]::Show(
             "$(Get-String "ErrorEngineRun" @($_.Exception.Message))",
             "Win11 25H2 Calm Mode", "OK", "Error") | Out-Null
+        if ($Mode -eq "Audit") { Set-ApplyGate -Enabled $false }
         $status.Text = (Get-String "StatusReady")
     } finally {
         $form.Enabled = $true
@@ -1184,6 +1854,13 @@ $btnAudit.Add_Click({
 })
 
 $btnApply.Add_Click({
+    if (-not $script:AuditGatePassed) {
+        [System.Windows.Forms.MessageBox]::Show(
+            (Get-String "ApplyBlockedRunAudit"),
+            "Win11 25H2 Calm Mode", "OK", "Information") | Out-Null
+        return
+    }
+
     # D4: compute the impact preview (quick hidden Audit) before asking to proceed.
     $form.Enabled = $false
     $status.Text = (Get-String "StatusImpactCalc")
@@ -1263,6 +1940,34 @@ if ($SelfTest) {
     if ($cfg0.blocks.Count -ne $script:BlockEntries.Count) {
         [void]$fail.Add("block count $($cfg0.blocks.Count) != entry count $($script:BlockEntries.Count)")
     }
+    if ($categoryList.Items.Count -ne $script:BlockEntries.Count) {
+        [void]$fail.Add("category list count $($categoryList.Items.Count) != entry count $($script:BlockEntries.Count)")
+    }
+    if ($categoryList.Items.Count -gt 0 -and $tweakList.Items.Count -eq 0) {
+        [void]$fail.Add("visible tweak list is empty for the selected category")
+    }
+    if ($btnApply.Enabled) {
+        [void]$fail.Add("Apply should be disabled before Audit")
+    }
+
+    $fakeRows = @(
+        [pscustomobject]@{ Status = "WouldChange"; Support = ""; Confidence = "Official" },
+        [pscustomobject]@{ Status = "Compliant"; Support = ""; Confidence = "Official" },
+        [pscustomobject]@{ Status = "Changed"; Support = ""; Confidence = "Official" },
+        [pscustomobject]@{ Status = "Warning"; Support = "MaybeIgnoredOnEdition"; Confidence = "RequiresVerification" },
+        [pscustomobject]@{ Status = "UnsupportedBuild"; Support = ""; Confidence = "Official" },
+        [pscustomobject]@{ Status = "Error"; Support = ""; Confidence = "Official" }
+    )
+    $fakeSummary = Get-ResultSummaryCounts -Results $fakeRows
+    if ($fakeSummary.WouldChange -ne 1 -or $fakeSummary.AlreadyOk -ne 1 -or
+        $fakeSummary.Changed -ne 1 -or $fakeSummary.NeedsVerification -ne 1 -or
+        $fakeSummary.Unsupported -ne 1 -or $fakeSummary.Errors -ne 1) {
+        [void]$fail.Add("result summary counters failed")
+    }
+    $nestedSummary = Get-ResultSummaryCounts -Results (, $fakeRows)
+    if ($nestedSummary.Total -ne 6 -or $nestedSummary.WouldChange -ne 1 -or $nestedSummary.AlreadyOk -ne 1) {
+        [void]$fail.Add("nested result array normalization failed")
+    }
 
     # Pick a block that has tweaks, to exercise the tweak/block disable round trips.
     $blockKey = $null; $tweakKey = $null
@@ -1299,15 +2004,15 @@ if ($SelfTest) {
         # change the canonical selection that Get-SelectionConfig reports.
         $txtFilter.Text = "zzz-no-such-tweak-zzz"
         & $applyFilter
-        if ($tree.Nodes.Count -ne 0) {
-            [void]$fail.Add("filter did not hide non-matching blocks (visible=$($tree.Nodes.Count))")
+        if ($categoryList.Items.Count -ne 0) {
+            [void]$fail.Add("filter did not hide non-matching blocks (visible=$($categoryList.Items.Count))")
         }
         if ((Get-SelectionConfig).blocks.Count -ne $script:BlockEntries.Count) {
             [void]$fail.Add("filter changed the canonical selection count")
         }
         $txtFilter.Text = ""
         & $applyFilter
-        if ($tree.Nodes.Count -ne $script:BlockEntries.Count) {
+        if ($categoryList.Items.Count -ne $script:BlockEntries.Count) {
             [void]$fail.Add("clearing the filter did not restore all blocks")
         }
 

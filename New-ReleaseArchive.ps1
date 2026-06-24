@@ -50,14 +50,19 @@ foreach ($pattern in $filesToInclude) {
     }
 }
 
+if (Test-Path "docs") {
+    Copy-Item -Path "docs" -Destination $releaseDir -Recurse
+}
+
 $checksumsFile = "checksums.txt"
 $checksumLines = New-Object 'System.Collections.Generic.List[string]'
 
 # 4. Generate file SHA256 hashes
 Write-Host "Generating SHA256 checksums..."
-Get-ChildItem -Path $releaseDir -File | ForEach-Object {
+Get-ChildItem -Path $releaseDir -File -Recurse | ForEach-Object {
     $hash = Get-Sha256Hex -Path $_.FullName
-    $checksumLines.Add("$hash  $($_.Name)")
+    $relativeName = $_.FullName.Substring((Resolve-Path $releaseDir).Path.Length + 1) -replace '\\', '/'
+    $checksumLines.Add("$hash  $relativeName")
 }
 
 # 5. Create ZIP Archive
