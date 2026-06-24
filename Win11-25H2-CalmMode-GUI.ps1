@@ -151,6 +151,9 @@ function Get-String {
 }
 
 function Update-UILanguage {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    param()
+
     if ($form) { $form.Text = Get-String "FormTitle" @($catalog.ScriptVersion) }
     if ($header -and $catalog) {
         $header.Text = Get-String "Header" @($catalog.Build, $catalog.UBR, $catalog.EditionGroup)
@@ -1047,7 +1050,6 @@ function Show-ResultsDialog {
             $grid.Rows[$i].Cells["Status"].Style.ForeColor = [System.Drawing.Color]::FromName($fore)
         }
         if ($grid.Rows.Count -eq 0) {
-            $status2 = if ($chkAll.Checked) { "no results" } else { "nothing needs attention" }
             $rf.Text = if ($chkAll.Checked) { Get-String "GridTitleEmpty" @($Mode) } else { Get-String "GridTitleNoAttention" @($Mode) }
         }
     }
