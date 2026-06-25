@@ -11,6 +11,9 @@ REM ============================================================
 
 setlocal
 set "PSEXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" (
+    set "PSEXE=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+)
 set "GUI=%~dp0Win11-25H2-CalmMode-GUI.ps1"
 
 if not exist "%GUI%" (
@@ -23,11 +26,16 @@ if not exist "%GUI%" (
     exit /b 1
 )
 
-REM Використовуємо тимчасовий VBScript для запуску PowerShell у прихованому режимі,
-REM щоб уникнути "блимання" чорної консолі.
-set "VBS_TEMP=%temp%\Win11-CalmMode-Launch-%RANDOM%.vbs"
-echo Set objShell = WScript.CreateObject("WScript.Shell") > "%VBS_TEMP%"
-echo objShell.Run """%PSEXE%"" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""%GUI%""", 0, False >> "%VBS_TEMP%"
-cscript //nologo "%VBS_TEMP%"
-del "%VBS_TEMP%"
+if not exist "%PSEXE%" (
+    echo ERROR: Windows PowerShell 5.1 was not found:
+    echo ПОМИЛКА: Windows PowerShell 5.1 не знайдено:
+    echo   "%PSEXE%"
+    pause
+    exit /b 1
+)
+
+REM Start PowerShell detached and hidden without temporary launcher files
+REM or cleanup steps that could fail or touch the wrong path.
+start "" /b "%PSEXE%" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%GUI%"
 endlocal
+exit /b 0

@@ -6,10 +6,10 @@
 Принципи незмінні: безпека, прозорість, backup/rollback, opt-in для ризикових дій, без зовнішніх
 runtime-залежностей, основна сумісність із Windows PowerShell 5.1.
 
-Поточний стан на 2026-06-24:
+Поточний стан на 2026-06-25:
 
-- `VERSION = 2.12`;
-- `[Unreleased]` порожній після релізу GUI/docs оновлень;
+- `VERSION = 2.12.1`;
+- `v2.12.1` оформлює launcher/test hygiene fixes після релізу GUI/docs оновлень;
 - локально проходили Windows PowerShell 5.1 parse, GUI `-SelfTest`, `git diff --check`;
 - повний живий `Apply -> reboot -> Verify -> Restore` у VM ще не задокументований.
 

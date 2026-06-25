@@ -134,7 +134,7 @@ jobs:
         shell: pwsh
         run: |
           $forbidden = @('Invoke-Expression', 'DownloadString', 'FromBase64', '-enc ', 'Net.WebClient')
-          # Exclude the test file because it uses Invoke-Expression to dot-source functions
+          # Keep this production-focused; tests may contain helper-only assertions/comments.
           $files = Get-ChildItem -Path . -Filter "Win11-*.ps1" | Where-Object { $_.Name -notmatch "Tests" }
           $hasErrors = $false
           foreach ($file in $files) {

@@ -2,9 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
-This project uses a simple versioning style: `vMAJOR.MINOR`.
+This project uses a simple versioning style: `vMAJOR.MINOR`, with `vMAJOR.MINOR.PATCH`
+for small fixes.
 
 ## [Unreleased]
+
+## [v2.12.1] - 2026-06-25
+
+### Fixed
+
+- The `Win11-25H2-CalmMode-GUI.cmd` launcher no longer creates a temporary `.vbs`, invokes
+  `cscript.exe`, or cleans up through `del`; the GUI starts directly through `start /b`, which
+  removes the second console-window flash and avoids any risky wildcard cleanup path.
+- The launcher prefers `Sysnative` PowerShell from a 32-bit context, checks that Windows
+  PowerShell 5.1 exists, and is saved as UTF-8 without BOM with CRLF so `.cmd` starts cleanly
+  from `@echo off`.
+- Pester tests now fail early with a clear Pester 4.0-or-newer requirement instead of producing
+  many noisy failures under local Pester 3.x.
+- The test helper no longer uses `Invoke-Expression`: local function definitions from the main
+  script are loaded through `[scriptblock]::Create(...)` and dot-sourcing.
 
 ## [v2.12] - 2026-06-24
 

@@ -1,18 +1,29 @@
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingInvokeExpression', '')]
 param()
 
 $ErrorActionPreference = "Stop"
+
+$pesterModule = Get-Module -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
+if (-not $pesterModule) {
+    $pesterModule = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
+}
+
+if (-not $pesterModule -or $pesterModule.Version -lt [version]"4.0.0") {
+    $foundVersion = if ($pesterModule) { $pesterModule.Version.ToString() } else { "not installed" }
+    throw "Win11-25H2-CalmMode tests require Pester 4.0 or newer. Found: $foundVersion."
+}
 
 $scriptPath = Join-Path $PSScriptRoot "Win11-25H2-CalmMode.ps1"
 if (-not (Test-Path $scriptPath)) {
     throw "Script not found at $scriptPath"
 }
 
-# Parse the script and dot-source only the functions to avoid running the main body
+# Parse the script and dot-source only local function definitions to avoid
+# running the main body while keeping the test scope close to production code.
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$null, [ref]$null)
 $functions = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]}, $true)
 foreach ($func in $functions) {
-    Invoke-Expression $func.Extent.Text
+    $functionScriptBlock = [scriptblock]::Create($func.Extent.Text)
+    . $functionScriptBlock
 }
 
 Describe "Win11-25H2-CalmMode Pure Functions" {
